@@ -1,3 +1,5 @@
+// truth-or-dare-ai\src\app\api\generate\route.ts
+
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
