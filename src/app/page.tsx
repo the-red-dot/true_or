@@ -4,19 +4,24 @@ import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { 
   Flame, 
-  UserPlus, 
   CheckCircle, 
-  XCircle 
+  XCircle,
+  Trash2,
+  LogOut,
+  User as UserIcon
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import QRCode from "react-qr-code";
+import { supabase } from "@/app/lib/supabase";
+import Link from "next/link";
+import { User } from "@supabase/supabase-js"; // Import Auth User Type
 
 // --- Types ---
 type Player = {
   id: string;
   name: string;
   gender: "male" | "female" | "other";
-  avatar: string; // Tailwind class or URL
+  avatar: string; 
 };
 
 type Challenge = {
@@ -24,14 +29,6 @@ type Challenge = {
   spiciness: number;
   themeColor: string;
 };
-
-// --- Mock Data for Demo (In real app, this comes from database) ---
-const MOCK_PLAYERS: Player[] = [
-  { id: "1", name: "דניאל", gender: "male", avatar: "bg-blue-500" },
-  { id: "2", name: "נועה", gender: "female", avatar: "bg-pink-500" },
-  { id: "3", name: "עומר", gender: "male", avatar: "bg-purple-500" },
-  { id: "4", name: "מאיה", gender: "female", avatar: "bg-red-500" },
-];
 
 export default function TruthOrDareGame() {
   // --- State ---
@@ -43,44 +40,80 @@ export default function TruthOrDareGame() {
   const [currentChallenge, setCurrentChallenge] = useState<Challenge | null>(null);
   const [loadingAI, setLoadingAI] = useState(false);
   const [joinUrl, setJoinUrl] = useState("");
+  
+  // Auth State
+  const [authUser, setAuthUser] = useState<User | null>(null);
 
-  // --- Init ---
+  // --- Realtime Players Listener & Auth Listener ---
   useEffect(() => {
-    // Set the join URL for the QR code
+    // 1. הגדרת הכתובת ל-QR
     if (typeof window !== "undefined") {
       setJoinUrl(`${window.location.origin}/join`);
     }
+
+    // 2. בדיקת משתמש מחובר
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setAuthUser(user);
+    };
+    checkUser();
+
+    // 3. טעינת שחקנים והאזנה לשינויים
+    const fetchPlayers = async () => {
+        const { data } = await supabase.from('players').select('*').order('created_at', { ascending: true });
+        if (data) setPlayers(data as Player[]);
+    };
+    fetchPlayers();
+
+    const channel = supabase
+        .channel('realtime players')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'players' }, (payload) => {
+            const newPlayer = payload.new as Player;
+            setPlayers((prev) => [...prev, newPlayer]);
+            playSpinSound(); 
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'players' }, (payload) => {
+            setPlayers((prev) => prev.filter(p => p.id !== payload.old.id));
+        })
+        .subscribe();
+
+    return () => {
+        supabase.removeChannel(channel);
+    };
   }, []);
 
-  // --- Audio placeholders (Logic only) ---
+  // --- Audio placeholders ---
   const playSpinSound = () => { /* Play spin.mp3 */ };
   const playWinSound = () => { /* Play win.mp3 */ };
   const playShotSound = () => { /* Play shot.mp3 */ };
-
-  // --- Helpers ---
-  const addMockPlayers = () => {
-    setPlayers(MOCK_PLAYERS);
-  };
 
   const handleHeatChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setHeatLevel(parseInt(e.target.value));
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setAuthUser(null);
+  };
+
+  const resetGame = async () => {
+    if (confirm("בטוח שאתה רוצה לאפס את המשחק ולמחוק את כל השחקנים?")) {
+        const { error } = await supabase.from('players').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        if (error) console.error("Error resetting:", error);
+        setPlayers([]); 
+    }
+  };
+
   const spinTheWheel = () => {
     if (players.length < 2) return alert("צריך לפחות 2 שחקנים!");
-    
     setGameState("spinning");
     playSpinSound();
     
-    // Fake spin duration
     setTimeout(() => {
       const randomPlayer = players[Math.floor(Math.random() * players.length)];
       setSelectedPlayer(randomPlayer);
-      
-      // Randomly decide Truth or Dare for flow
       const type = Math.random() > 0.5 ? "Truth" : "Dare";
       setChallengeType(type);
-      
       setGameState("revealing");
     }, 3000);
   };
@@ -106,7 +139,6 @@ export default function TruthOrDareGame() {
           playWinSound();
         } catch (error) {
           console.error("AI Error", error);
-          // Fallback in case of error
           setCurrentChallenge({
              content: "ה-AI התעייף... תעשה שוט!",
              spiciness: 1,
@@ -122,12 +154,7 @@ export default function TruthOrDareGame() {
   }, [gameState, selectedPlayer, challengeType, heatLevel]);
 
   const handleDone = () => {
-    confetti({
-      particleCount: 100,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ['#ff00ff', '#00ffff']
-    });
+    confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ['#ff00ff', '#00ffff'] });
     setTimeout(() => setGameState("lobby"), 3000);
   };
 
@@ -136,13 +163,30 @@ export default function TruthOrDareGame() {
     playShotSound();
   };
 
-  // --- Components ---
-
   return (
     <main className="min-h-screen bg-black text-white font-sans overflow-hidden relative selection:bg-pink-500">
-      {/* Background Ambience */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-black to-black z-0 pointer-events-none" />
       <div className={`absolute inset-0 transition-opacity duration-1000 z-0 opacity-30 ${heatLevel > 7 ? 'bg-red-900/20' : 'bg-transparent'}`} />
+
+      {/* --- Auth Status (Top Left) --- */}
+      <div className="absolute top-4 left-4 z-50">
+        {authUser ? (
+            <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-white/20">
+                <div className="flex flex-col text-xs">
+                    <span className="text-gray-400">מחובר כ:</span>
+                    <span className="font-bold text-white">{authUser.email?.split('@')[0]}</span>
+                </div>
+                <button onClick={handleLogout} className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400" title="התנתק">
+                    <LogOut size={16} />
+                </button>
+            </div>
+        ) : (
+            <Link href="/login" className="flex items-center gap-2 bg-pink-600 hover:bg-pink-500 px-4 py-2 rounded-full font-bold text-sm transition-colors shadow-lg">
+                <UserIcon size={16} />
+                התחברות למארח
+            </Link>
+        )}
+      </div>
 
       {/* --- LOBBY VIEW --- */}
       {gameState === "lobby" && (
@@ -155,8 +199,8 @@ export default function TruthOrDareGame() {
             TRUTH OR DARE <br/> <span className="text-4xl text-white font-light tracking-widest">AI EDITION</span>
           </h1>
 
-          {/* Player Circle Display */}
-          <div className="flex flex-wrap gap-4 justify-center items-center min-h-[100px]">
+          {/* Player Circle Display - REALTIME */}
+          <div className="flex flex-wrap gap-4 justify-center items-center min-h-[100px] px-10">
             {players.length === 0 ? (
               <div className="text-gray-500 text-xl animate-pulse">ממתין לשחקנים... סרקו את הקוד</div>
             ) : (
@@ -165,9 +209,16 @@ export default function TruthOrDareGame() {
                   key={p.id}
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
-                  className={`w-16 h-16 rounded-full ${p.avatar} border-2 border-white/50 flex items-center justify-center shadow-[0_0_15px_currentColor] text-xl font-bold`}
+                  className="flex flex-col items-center gap-2"
                 >
-                  {p.name[0]}
+                    <div className={`w-20 h-20 rounded-full border-2 border-white/50 overflow-hidden shadow-[0_0_15px_rgba(255,255,255,0.3)]`}>
+                       {p.avatar.startsWith('bg-') ? (
+                          <div className={`w-full h-full ${p.avatar}`} />
+                       ) : (
+                          <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
+                       )}
+                    </div>
+                    <span className="font-bold text-sm">{p.name}</span>
                 </motion.div>
               ))
             )}
@@ -191,22 +242,24 @@ export default function TruthOrDareGame() {
             />
             
             <div className="mt-8 flex justify-center gap-4">
-              {players.length === 0 && (
-                <button onClick={addMockPlayers} className="px-6 py-3 bg-gray-800 rounded-xl hover:bg-gray-700 flex items-center gap-2 transition">
-                  <UserPlus size={20} /> (הוסף דמו)
-                </button>
-              )}
+              <button 
+                onClick={resetGame}
+                className="px-4 py-3 bg-red-900/50 hover:bg-red-800 rounded-xl flex items-center gap-2 transition text-xs"
+                title="איפוס משחק"
+              >
+                <Trash2 size={16} />
+              </button>
+              
               <button 
                 onClick={spinTheWheel}
                 disabled={players.length < 2}
-                className="px-12 py-4 bg-gradient-to-r from-pink-600 to-purple-600 rounded-xl font-bold text-2xl hover:scale-105 transition-transform shadow-[0_0_30px_rgba(236,72,153,0.6)] disabled:opacity-50 disabled:hover:scale-100 text-white"
+                className="flex-1 px-12 py-4 bg-gradient-to-r from-pink-600 to-purple-600 rounded-xl font-bold text-2xl hover:scale-105 transition-transform shadow-[0_0_30px_rgba(236,72,153,0.6)] disabled:opacity-50 disabled:hover:scale-100 text-white"
               >
                 SPIN IT!
               </button>
             </div>
           </div>
 
-          {/* QR Code Section - Dynamic */}
           <div className="absolute bottom-10 right-10 bg-white p-3 rounded-xl opacity-90 shadow-[0_0_20px_rgba(255,255,255,0.3)] flex flex-col items-center gap-2 transform rotate-3 hover:rotate-0 transition-transform">
              {joinUrl && (
                 <div style={{ height: "auto", maxWidth: "120px", width: "100%" }}>
@@ -240,9 +293,9 @@ export default function TruthOrDareGame() {
           </h2>
 
           {loadingAI && (
-            <div className="mt-4 text-pink-500 font-mono text-xl animate-pulse">
-              Gemini AI מבשל משהו חריף...
-            </div>
+             <div className="mt-4 text-pink-500 font-mono text-xl animate-pulse">
+             Gemini AI מבשל משהו חריף...
+           </div>
           )}
         </div>
       )}
@@ -254,7 +307,6 @@ export default function TruthOrDareGame() {
           animate={{ scale: 1, opacity: 1 }}
           className="flex flex-col items-center justify-center h-screen z-20 relative px-4"
         >
-          {/* Spiciness Indicator */}
           <div className="absolute top-10 right-10 flex flex-col gap-1 items-center">
             <span className="text-xs font-bold uppercase tracking-widest mb-2 text-gray-400">Spiciness</span>
             <div className="flex gap-1">
@@ -268,8 +320,12 @@ export default function TruthOrDareGame() {
           </div>
 
           <div className="text-center mb-6">
-            <div className={`inline-block w-24 h-24 rounded-full ${selectedPlayer.avatar} border-4 border-white mb-4 shadow-xl text-4xl flex items-center justify-center font-bold`}>
-              {selectedPlayer.name[0]}
+            <div className={`inline-block w-32 h-32 rounded-full border-4 border-white mb-4 shadow-xl overflow-hidden`}>
+               {selectedPlayer.avatar.startsWith('bg-') ? (
+                   <div className={`w-full h-full ${selectedPlayer.avatar}`} />
+               ) : (
+                   <img src={selectedPlayer.avatar} alt={selectedPlayer.name} className="w-full h-full object-cover" />
+               )}
             </div>
             <h2 className="text-5xl font-bold text-white mb-2">{selectedPlayer.name}</h2>
             <h3 className={`text-4xl font-black uppercase tracking-widest ${challengeType === 'Truth' ? 'text-blue-400 drop-shadow-[0_0_10px_rgba(59,130,246,0.8)]' : 'text-pink-500 drop-shadow-[0_0_10px_rgba(236,72,153,0.8)]'}`}>
