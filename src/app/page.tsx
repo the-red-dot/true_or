@@ -8,7 +8,9 @@ import {
   XCircle,
   Trash2,
   LogOut,
-  User as UserIcon
+  User as UserIcon,
+  Wifi,
+  WifiOff
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import QRCode from "react-qr-code";
@@ -41,8 +43,9 @@ export default function TruthOrDareGame() {
   const [loadingAI, setLoadingAI] = useState(false);
   const [joinUrl, setJoinUrl] = useState("");
   
-  // Auth State
+  // Auth & Connection State
   const [authUser, setAuthUser] = useState<User | null>(null);
+  const [isConnected, setIsConnected] = useState<boolean>(true); // Default true, sets to false on error
 
   // --- Realtime Players Listener & Auth Listener ---
   useEffect(() => {
@@ -60,8 +63,15 @@ export default function TruthOrDareGame() {
 
     // 3. טעינת שחקנים והאזנה לשינויים
     const fetchPlayers = async () => {
-        const { data } = await supabase.from('players').select('*').order('created_at', { ascending: true });
-        if (data) setPlayers(data as Player[]);
+        const { data, error } = await supabase.from('players').select('*').order('created_at', { ascending: true });
+        
+        if (error) {
+            console.error("Supabase Connection Error:", error);
+            setIsConnected(false);
+        } else {
+            setIsConnected(true);
+            if (data) setPlayers(data as Player[]);
+        }
     };
     fetchPlayers();
 
@@ -75,7 +85,15 @@ export default function TruthOrDareGame() {
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'players' }, (payload) => {
             setPlayers((prev) => prev.filter(p => p.id !== payload.old.id));
         })
-        .subscribe();
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                setIsConnected(true);
+            }
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                console.error("Realtime Error:", status);
+                setIsConnected(false);
+            }
+        });
 
     return () => {
         supabase.removeChannel(channel);
@@ -168,8 +186,8 @@ export default function TruthOrDareGame() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-black to-black z-0 pointer-events-none" />
       <div className={`absolute inset-0 transition-opacity duration-1000 z-0 opacity-30 ${heatLevel > 7 ? 'bg-red-900/20' : 'bg-transparent'}`} />
 
-      {/* --- Auth Status (Top Left) --- */}
-      <div className="absolute top-4 left-4 z-50">
+      {/* --- Auth Status & Connection Status (Top Left) --- */}
+      <div className="absolute top-4 left-4 z-50 flex flex-col gap-2 items-start">
         {authUser ? (
             <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-white/20">
                 <div className="flex flex-col text-xs">
@@ -185,6 +203,14 @@ export default function TruthOrDareGame() {
                 <UserIcon size={16} />
                 התחברות למארח
             </Link>
+        )}
+
+        {/* Connection Indicator */}
+        {!isConnected && (
+             <div className="flex items-center gap-2 bg-red-900/80 backdrop-blur-md px-4 py-1 rounded-full border border-red-500/50 text-red-200 text-xs font-bold animate-pulse">
+                <WifiOff size={14} />
+                מנותק מ-Supabase (בדוק הגדרות Vercel)
+             </div>
         )}
       </div>
 
