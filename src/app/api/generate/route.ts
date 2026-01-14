@@ -1,5 +1,3 @@
-// truth-or-dare-ai\src\app\api\generate\route.ts
-
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
@@ -9,38 +7,58 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { playerName, playerGender, heatLevel, type } = body;
+    const { playerName, playerGender, heatLevel, type, previousChallenges } = body;
 
-    // UPDATE: שימוש בגרסת Gemini 2.5 Flash Preview כפי שביקשת
-    // הערה: וודא שה-API Key שלך תומך בגרסה הזו. אם לא, נסה: gemini-1.5-flash
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-09-2025" });
+    // פונקציה שמנסה לייצר תוכן עם מודל ראשי, ואם נכשלת עוברת למשני
+    const generateWithFallback = async (prompt: string) => {
+        const modelsToTry = ["gemini-2.5-flash-preview-09-2025", "gemini-1.5-flash"];
+        
+        for (const modelName of modelsToTry) {
+            try {
+                const model = genAI.getGenerativeModel({ model: modelName });
+                const result = await model.generateContent(prompt);
+                const response = await result.response;
+                return response.text();
+            } catch (error) {
+                console.warn(`Model ${modelName} failed, trying next...`);
+                continue;
+            }
+        }
+        throw new Error("All models failed");
+    };
+
+    // המרת רשימת המשימות הקודמות לטקסט עבור הפרומפט
+    const historyText = previousChallenges && previousChallenges.length > 0 
+        ? `History of tasks already given to this player (DO NOT REPEAT THESE): ${previousChallenges.join(", ")}.`
+        : "No previous tasks.";
 
     // בניית הפרומפט המותאם
     const prompt = `
-      You are the host of a high-energy, sexy, and stylish Truth or Dare party game.
-      Current Player: ${playerName} (Gender: ${playerGender}).
-      Game Mode: ${type} (Truth or Dare).
-      Heat Level (1-10): ${heatLevel}.
+      אתה המנחה של משחק "אמת או חובה" מסיבתי, אנרגטי ומסוגנן.
+      השחקן הנוכחי: ${playerName} (מין: ${playerGender}).
+      מצב משחק: ${type} (אמת או חובה).
+      רמת חום (1-10): ${heatLevel}.
+      ${historyText}
 
-      Instructions:
-      1. Generate a creative, engaging, and specifically tailored ${type} challenge for this player.
-      2. If Heat Level is low (1-3), make it funny and light.
-      3. If Heat Level is medium (4-7), make it flirty and daring.
-      4. If Heat Level is high (8-10), make it extremely spicy, kinky, and for adults only.
-      5. Also provide a "spiciness" rating for this specific generated question from 1 to 10.
-      6. Output MUST be valid JSON only, no markdown.
+      הוראות:
+      1. צור משימת ${type} יצירתית, מותאמת אישית ומגניבה לשחקן הזה.
+      2. אם רמת החום נמוכה (1-3): שיהיה מצחיק וקליל.
+      3. אם רמת החום בינונית (4-7): שיהיה פלרטטני ונועז.
+      4. אם רמת החום גבוהה (8-10): שיהיה חריף מאוד, קינקי ולמבוגרים בלבד.
+      5. חשוב מאוד: התשובה חייבת להיות ב**עברית בלבד**.
+      6. שמור על הטקסט קצר וקולע (מקסימום 2 משפטים) כדי שייכנס יפה בעיצוב. אל תחפור.
+      7. בדוק את ההיסטוריה שצירפתי - אם כבר ביקשת ממנו משהו (למשל להוריד חולצה), אל תבקש שוב דברים דומים שכבר בוצעו.
+      8. תן דירוג "חריפות" (spiciness) מ-1 עד 10 לאתגר הספציפי שיצרת.
 
-      JSON Structure:
+      המבנה של ה-JSON חייב להיות כזה (ללא Markdown מסביב):
       {
-        "content": "The challenge text in Hebrew (עברית)",
-        "spiciness": number (1-10),
-        "themeColor": "hex color code matching the mood"
+        "content": "הטקסט של המשימה בעברית",
+        "spiciness": מספר (1-10),
+        "themeColor": "קוד צבע HEX שמתאים לאווירה"
       }
     `;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const responseText = response.text();
+    const responseText = await generateWithFallback(prompt);
     
     // ניקוי המרקדאון אם קיים כדי לקבל JSON נקי
     const cleanedText = responseText.replace(/```json|```/g, "").trim();
@@ -52,7 +70,7 @@ export async function POST(req: Request) {
         console.error("JSON Parse Error:", parseError);
         // Fallback if JSON fails
         return NextResponse.json({
-            content: cleanedText,
+            content: cleanedText, // במקרה חירום מציג את הטקסט הגולמי
             spiciness: 5,
             themeColor: "#FF00FF"
         });

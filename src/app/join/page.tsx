@@ -1,17 +1,14 @@
-// truth-or-dare-ai\src\app\join\page.tsx
-
 "use client";
 
 import React, { useState, Suspense } from "react";
 import { motion } from "framer-motion";
-import { Upload, User, ArrowRight, Camera, Check, Loader2, AlertTriangle } from "lucide-react";
+import { Upload, User, ArrowLeft, Camera, Check, Loader2, AlertTriangle } from "lucide-react";
 import { supabase } from "@/app/lib/supabase";
 import { useSearchParams } from "next/navigation";
 
 // --- קומפוננטת הטופס הפנימית ---
 function JoinForm() {
   const searchParams = useSearchParams();
-  // שליפת ה-ID של המארח מהכתובת
   const hostId = searchParams.get('hostId');
 
   const [name, setName] = useState("");
@@ -21,7 +18,6 @@ function JoinForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // פונקציית כיווץ תמונה
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -51,7 +47,7 @@ function JoinForm() {
         setImagePreview(compressedImage);
       } catch (err) {
         console.error(err);
-        alert("שגיאה בעיבוד תמונה");
+        alert("שגיאה בעיבוד התמונה");
       }
     }
   };
@@ -74,7 +70,7 @@ function JoinForm() {
                     name, 
                     gender, 
                     avatar: imagePreview || `bg-${['red','blue','green','purple','pink'][Math.floor(Math.random()*5)]}-500`,
-                    host_id: hostId // <--- הקישור הקריטי למארח
+                    host_id: hostId
                 }
             ]);
 
@@ -82,7 +78,7 @@ function JoinForm() {
         setIsSubmitted(true);
     } catch (err: any) {
         console.error("Join Error:", err);
-        setError("הייתה בעיה בהצטרפות. וודא שהמארח מחובר.");
+        setError("הייתה בעיה בהצטרפות. וודא שהמארח מחובר למשחק.");
     } finally {
         setLoading(false);
     }
@@ -90,7 +86,7 @@ function JoinForm() {
 
   if (isSubmitted) {
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center" dir="rtl">
         <motion.div 
           initial={{ scale: 0 }} 
           animate={{ scale: 1 }} 
@@ -99,15 +95,14 @@ function JoinForm() {
           <Check size={48} />
         </motion.div>
         <h1 className="text-3xl font-bold mb-2">אתה בפנים! 🔥</h1>
-        <p className="text-gray-400">תסתכל על הטלוויזיה, השם שלך יופיע שם.</p>
+        <p className="text-gray-400">תסתכל על הטלוויזיה, השם שלך יופיע שם מיד.</p>
       </div>
     );
   }
 
-  // מסך שגיאה אם אין Host ID
   if (!hostId) {
      return (
-        <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
+        <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center" dir="rtl">
              <AlertTriangle className="text-red-500 w-16 h-16 mb-4" />
              <h1 className="text-2xl font-bold">שגיאה בחיבור</h1>
              <p className="text-gray-400 mt-2">לא נמצא קוד משחק. אנא סרוק את ה-QR שוב מהטלוויזיה.</p>
@@ -116,7 +111,7 @@ function JoinForm() {
   }
 
   return (
-    <div className="w-full max-w-md space-y-8 pb-10">
+    <div className="w-full max-w-md space-y-8 pb-10" dir="rtl">
         {/* העלאת תמונה */}
         <div className="flex justify-center">
           <div className="relative">
@@ -148,7 +143,7 @@ function JoinForm() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="איך קוראים לך?"
-              className="w-full bg-gray-900/50 border border-gray-700 rounded-xl p-4 text-lg focus:outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all placeholder:text-gray-600"
+              className="w-full bg-gray-900/50 border border-gray-700 rounded-xl p-4 text-lg focus:outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all placeholder:text-gray-600 text-right text-white"
             />
             <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600" size={20} />
           </div>
@@ -185,9 +180,9 @@ function JoinForm() {
           whileTap={{ scale: 0.95 }}
           onClick={handleSubmit}
           disabled={loading}
-          className="w-full bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 p-5 rounded-2xl font-black text-xl uppercase tracking-widest shadow-[0_0_20px_rgba(168,85,247,0.5)] flex items-center justify-center gap-2 mt-8 disabled:opacity-50"
+          className="w-full bg-gradient-to-l from-pink-600 via-purple-600 to-indigo-600 p-5 rounded-2xl font-black text-xl uppercase tracking-widest shadow-[0_0_20px_rgba(168,85,247,0.5)] flex items-center justify-center gap-2 mt-8 disabled:opacity-50"
         >
-          {loading ? <Loader2 className="animate-spin" /> : <>אני מוכן <ArrowRight /></>}
+          {loading ? <Loader2 className="animate-spin" /> : <>אני מוכן <ArrowLeft /></>}
         </motion.button>
     </div>
   );
@@ -196,14 +191,14 @@ function JoinForm() {
 // --- קומפוננטה ראשית (עוטפת ב-Suspense) ---
 export default function PlayerJoinPage() {
     return (
-        <div className="min-h-screen bg-black text-white p-6 flex flex-col items-center overflow-y-auto">
+        <div className="min-h-screen bg-black text-white p-6 flex flex-col items-center overflow-y-auto" dir="rtl">
             <motion.div 
                 initial={{ y: -50, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 className="w-full max-w-md mt-4 mb-8 text-center"
             >
                 <h1 className="text-4xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">
-                JOIN THE PARTY
+                הצטרף למסיבה
                 </h1>
                 <p className="text-gray-400 text-sm mt-1">הכנס את הפרטים כדי לשחק</p>
             </motion.div>
