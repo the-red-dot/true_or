@@ -1,38 +1,29 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-// אתחול המודל
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
+// הגדרת מאגר המפתחות והמודלים לשימוש ברוטציה/גיבוי
+const API_KEYS = [
+  process.env.GOOGLE_API_KEY,
+  process.env.GOOGLE_API_KEY_SECONDARY
+].filter(Boolean) as string[];
+
+// רשימת המודלים לפי סדר עדיפות: החדש ביותר קודם
+const MODELS = [
+  "gemini-2.5-flash-preview-09-2025", // עדיפות ראשונה (דמוי גרסה 3)
+  "gemini-1.5-flash",                 // גיבוי מהיר ויציב
+  "gemini-pro"                        // גיבוי אחרון
+];
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { playerName, playerGender, heatLevel, type, previousChallenges } = body;
 
-    // פונקציה שמנסה לייצר תוכן עם מודל ראשי, ואם נכשלת עוברת למשני
-    const generateWithFallback = async (prompt: string) => {
-        const modelsToTry = ["gemini-2.5-flash-preview-09-2025", "gemini-1.5-flash"];
-        
-        for (const modelName of modelsToTry) {
-            try {
-                const model = genAI.getGenerativeModel({ model: modelName });
-                const result = await model.generateContent(prompt);
-                const response = await result.response;
-                return response.text();
-            } catch (error) {
-                console.warn(`Model ${modelName} failed, trying next...`);
-                continue;
-            }
-        }
-        throw new Error("All models failed");
-    };
-
     // המרת רשימת המשימות הקודמות לטקסט עבור הפרומפט
     const historyText = previousChallenges && previousChallenges.length > 0 
         ? `History of tasks already given to this player (DO NOT REPEAT THESE): ${previousChallenges.join(", ")}.`
         : "No previous tasks.";
 
-    // בניית הפרומפט המותאם
     const prompt = `
       אתה המנחה של משחק "אמת או חובה" מסיבתי, אנרגטי ומסוגנן.
       השחקן הנוכחי: ${playerName} (מין: ${playerGender}).
@@ -46,8 +37,8 @@ export async function POST(req: Request) {
       3. אם רמת החום בינונית (4-7): שיהיה פלרטטני ונועז.
       4. אם רמת החום גבוהה (8-10): שיהיה חריף מאוד, קינקי ולמבוגרים בלבד.
       5. חשוב מאוד: התשובה חייבת להיות ב**עברית בלבד**.
-      6. שמור על הטקסט קצר וקולע (מקסימום 2 משפטים) כדי שייכנס יפה בעיצוב. אל תחפור.
-      7. בדוק את ההיסטוריה שצירפתי - אם כבר ביקשת ממנו משהו (למשל להוריד חולצה), אל תבקש שוב דברים דומים שכבר בוצעו.
+      6. שמור על הטקסט קצר וקולע (מקסימום 2 משפטים).
+      7. וודא שלא חוזרים על משימות מההיסטוריה שצירפתי.
       8. תן דירוג "חריפות" (spiciness) מ-1 עד 10 לאתגר הספציפי שיצרת.
 
       המבנה של ה-JSON חייב להיות כזה (ללא Markdown מסביב):
@@ -58,28 +49,53 @@ export async function POST(req: Request) {
       }
     `;
 
-    const responseText = await generateWithFallback(prompt);
-    
-    // ניקוי המרקדאון אם קיים כדי לקבל JSON נקי
-    const cleanedText = responseText.replace(/```json|```/g, "").trim();
-    
-    try {
-        const data = JSON.parse(cleanedText);
-        return NextResponse.json(data);
-    } catch (parseError) {
-        console.error("JSON Parse Error:", parseError);
-        // Fallback if JSON fails
-        return NextResponse.json({
-            content: cleanedText, // במקרה חירום מציג את הטקסט הגולמי
-            spiciness: 5,
-            themeColor: "#FF00FF"
-        });
+    // --- לוגיקת ה-FALLBACK החכמה ---
+    let lastError = null;
+
+    // לולאה חיצונית: מעבר על מפתחות API
+    for (const apiKey of API_KEYS) {
+        const genAI = new GoogleGenerativeAI(apiKey);
+
+        // לולאה פנימית: מעבר על מודלים עבור כל מפתח
+        for (const modelName of MODELS) {
+            try {
+                // ניסיון יצירה
+                const model = genAI.getGenerativeModel({ model: modelName });
+                const result = await model.generateContent(prompt);
+                const response = await result.response;
+                const responseText = response.text();
+
+                // אם הגענו לכאן - יש הצלחה! נעבד ונחזיר תשובה.
+                const cleanedText = responseText.replace(/```json|```/g, "").trim();
+                const data = JSON.parse(cleanedText);
+                
+                // הוספת מידע על המודל שהצליח (עבור התצוגה)
+                data.usedModel = `${modelName} (Key ${apiKey.substr(0, 4)}...)`;
+                
+                return NextResponse.json(data);
+
+            } catch (error: any) {
+                console.warn(`Failed with Key: ...${apiKey.slice(-4)} and Model: ${modelName}. Error: ${error.message}`);
+                lastError = error;
+                // ממשיכים לאיטרציה הבאה בלולאה (מודל הבא או מפתח הבא)
+                continue;
+            }
+        }
     }
 
+    // אם סיימנו את כל המפתחות וכל המודלים ועדיין נכשלנו:
+    console.error("All API attempts failed.");
+    return NextResponse.json({
+        content: "המערכת עמוסה כרגע... תעשה שוט בינתיים!",
+        spiciness: 10,
+        themeColor: "#FF0000",
+        usedModel: "Fallback (Error)"
+    });
+
   } catch (error) {
-    console.error("Gemini API Error:", error);
+    console.error("Critical API Error:", error);
     return NextResponse.json(
-      { content: "תעשה שוט! ה-AI שתה יותר מדי...", spiciness: 10, themeColor: "#FF0000" },
+      { content: "שגיאה קריטית במערכת", spiciness: 10, themeColor: "#FF0000" },
       { status: 500 }
     );
   }

@@ -11,7 +11,8 @@ import {
   User as UserIcon,
   WifiOff,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  Cpu // אייקון להצגת המודל
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import QRCode from "react-qr-code";
@@ -33,6 +34,7 @@ type Challenge = {
   content: string;
   spiciness: number;
   themeColor: string;
+  usedModel?: string; // שדה חדש להצגת המודל הפעיל
 };
 
 export default function TruthOrDareGame() {
@@ -155,13 +157,11 @@ export default function TruthOrDareGame() {
   const resetGame = async () => {
     if (!authUser) return;
     if (confirm("בטוח שאתה רוצה לאפס את המשחק ולמחוק את כל השחקנים וההיסטוריה?")) {
-        // מחיקת שחקנים
         const { error: playersError } = await supabase
           .from('players')
           .delete()
           .eq('host_id', authUser.id);
         
-        // מחיקת היסטוריה
         const { error: historyError } = await supabase
           .from('challenge_history')
           .delete()
@@ -182,13 +182,10 @@ export default function TruthOrDareGame() {
       setSelectedPlayer(randomPlayer);
       const type = Math.random() > 0.5 ? "אמת" : "חובה";
       setChallengeType(type);
-      
-      // שלב הזרקור
       setGameState("spotlight");
     }, 3000);
   };
 
-  // מעבר אוטומטי מזרקור לחשיפה
   useEffect(() => {
       if (gameState === "spotlight") {
           const timer = setTimeout(() => {
@@ -198,23 +195,20 @@ export default function TruthOrDareGame() {
       }
   }, [gameState]);
 
-  // --- יצירת אתגר ע"י Gemini עם היסטוריה מהדאטהבייס ---
+  // --- Gemini Generation ---
   useEffect(() => {
     if (gameState === "revealing" && selectedPlayer && challengeType && authUser) {
       const fetchChallenge = async () => {
         setLoadingAI(true);
         try {
-          // 1. שליפת היסטוריה מהדאטהבייס עבור השחקן הספציפי
           const { data: historyData } = await supabase
             .from('challenge_history')
             .select('challenge_text')
             .eq('host_id', authUser.id)
             .eq('player_id', selectedPlayer.id);
 
-          // המרת התוצאות למערך מחרוזות פשוט
           const playerPrevTasks = historyData?.map(h => h.challenge_text) || [];
 
-          // 2. קריאה ל-AI
           const res = await fetch("/api/generate", {
             method: "POST",
             body: JSON.stringify({
@@ -228,7 +222,6 @@ export default function TruthOrDareGame() {
           const data = await res.json();
           setCurrentChallenge(data);
           
-          // 3. שמירת האתגר החדש לדאטהבייס כדי שלא יחזור בעתיד
           if (data.content) {
               await supabase.from('challenge_history').insert({
                   host_id: authUser.id,
@@ -245,7 +238,8 @@ export default function TruthOrDareGame() {
           setCurrentChallenge({
              content: "ה-AI התעייף... תעשה שוט!",
              spiciness: 1,
-             themeColor: "#ff0000"
+             themeColor: "#ff0000",
+             usedModel: "Fallback"
           });
           setGameState("challenge");
         } finally {
@@ -254,7 +248,7 @@ export default function TruthOrDareGame() {
       };
       fetchChallenge();
     }
-  }, [gameState]); // התלות רק ב-gameState מונעת לולאות אינסופיות
+  }, [gameState]);
 
   const handleDone = () => {
     confetti({ particleCount: 150, spread: 100, origin: { y: 0.6 }, colors: ['#ff00ff', '#00ffff', '#ffff00'] });
@@ -268,11 +262,10 @@ export default function TruthOrDareGame() {
 
   return (
     <main className="min-h-screen bg-black text-white font-sans overflow-hidden relative selection:bg-pink-500" dir="rtl">
-      {/* רקע ואווירה */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-black to-black z-0 pointer-events-none" />
       <div className={`absolute inset-0 transition-opacity duration-1000 z-0 opacity-30 ${heatLevel > 7 ? 'bg-red-900/20' : 'bg-transparent'}`} />
 
-      {/* --- סטטוס חיבור ומשתמש --- */}
+      {/* --- Top Bar --- */}
       <div className="absolute top-4 left-4 z-50 flex flex-col gap-2 items-end ltr">
         {authUser ? (
             <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-white/20">
@@ -302,7 +295,7 @@ export default function TruthOrDareGame() {
         )}
       </div>
 
-      {/* --- LOBBY VIEW --- */}
+      {/* --- LOBBY --- */}
       {gameState === "lobby" && (
         <motion.div 
           initial={{ opacity: 0 }} 
@@ -313,7 +306,6 @@ export default function TruthOrDareGame() {
             אמת או חובה <br/> <span className="text-4xl text-white font-light tracking-widest opacity-80">AI EDITION</span>
           </h1>
 
-          {/* מעגל שחקנים */}
           <div className="flex flex-wrap gap-6 justify-center items-center min-h-[120px] px-10">
             {players.length === 0 ? (
               <div className="text-gray-500 text-2xl animate-pulse font-bold">
@@ -340,7 +332,6 @@ export default function TruthOrDareGame() {
             )}
           </div>
 
-          {/* לוח בקרה */}
           <div className="bg-white/5 backdrop-blur-xl p-8 rounded-[2rem] border border-white/10 w-full max-w-3xl shadow-2xl">
             <div className="flex items-center justify-between mb-6">
               <span className="text-cyan-400 font-bold text-xl flex items-center gap-2"><Flame className="fill-cyan-400" /> רמת חום: {heatLevel}</span>
@@ -377,7 +368,6 @@ export default function TruthOrDareGame() {
             </div>
           </div>
 
-          {/* QR Code */}
           <div className="absolute bottom-10 right-10 bg-white p-4 rounded-2xl opacity-90 shadow-[0_0_30px_rgba(255,255,255,0.2)] flex flex-col items-center gap-2 transform rotate-2 hover:rotate-0 transition-transform duration-300 hover:scale-110 cursor-none">
              {authUser && joinUrl ? (
                 <div style={{ height: "auto", maxWidth: "140px", width: "100%" }}>
@@ -415,7 +405,7 @@ export default function TruthOrDareGame() {
         </div>
       )}
 
-      {/* --- SPOTLIGHT VIEW --- */}
+      {/* --- SPOTLIGHT --- */}
       {gameState === "spotlight" && selectedPlayer && (
         <motion.div 
             initial={{ scale: 0.5, opacity: 0 }}
@@ -429,7 +419,6 @@ export default function TruthOrDareGame() {
                     transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
                     className="absolute -inset-10 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-full blur-2xl opacity-50"
                 />
-                
                 <div className={`relative w-64 h-64 md:w-96 md:h-96 rounded-full border-8 border-white shadow-[0_0_50px_rgba(255,255,255,0.5)] overflow-hidden z-10`}>
                     {selectedPlayer.avatar.startsWith('bg-') ? (
                         <div className={`w-full h-full ${selectedPlayer.avatar}`} />
@@ -437,7 +426,6 @@ export default function TruthOrDareGame() {
                         <img src={selectedPlayer.avatar} alt={selectedPlayer.name} className="w-full h-full object-cover" />
                     )}
                 </div>
-                
                 <motion.div 
                     initial={{ y: 50, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
@@ -447,7 +435,6 @@ export default function TruthOrDareGame() {
                     {selectedPlayer.name}
                 </motion.div>
             </div>
-
             <motion.h2 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -459,7 +446,7 @@ export default function TruthOrDareGame() {
         </motion.div>
       )}
 
-      {/* --- REVEALING AI --- */}
+      {/* --- REVEALING --- */}
       {gameState === "revealing" && (
           <div className="flex flex-col items-center justify-center h-screen z-10">
               <Sparkles className="w-20 h-20 text-purple-400 animate-pulse mb-6" />
@@ -479,7 +466,7 @@ export default function TruthOrDareGame() {
           animate={{ scale: 1, opacity: 1 }}
           className="flex flex-col items-center justify-center h-screen z-20 relative px-4 max-w-5xl mx-auto"
         >
-          {/* Spiciness Indicator */}
+          {/* Spiciness */}
           <div className="absolute top-10 right-10 flex flex-col gap-2 items-center bg-black/40 p-4 rounded-xl backdrop-blur-sm border border-white/10">
             <span className="text-xs font-bold uppercase tracking-widest text-gray-400">רמת חריפות</span>
             <div className="flex gap-1">
@@ -510,14 +497,22 @@ export default function TruthOrDareGame() {
 
           {/* כרטיס המשימה */}
           <motion.div 
-            className="bg-black/60 backdrop-blur-xl border-2 p-10 md:p-14 rounded-[3rem] w-full text-center relative overflow-hidden shadow-2xl min-h-[350px] flex items-center justify-center max-w-4xl"
+            className="bg-black/60 backdrop-blur-xl border-2 p-10 md:p-14 rounded-[3rem] w-full text-center relative overflow-hidden shadow-2xl min-h-[350px] flex items-center justify-center max-w-4xl flex-col"
             style={{ borderColor: currentChallenge.themeColor }}
           >
              <div className="absolute inset-0 opacity-10 bg-gradient-to-br from-transparent to-current" style={{ color: currentChallenge.themeColor }} />
              
-             <p className="text-3xl md:text-5xl font-bold leading-tight drop-shadow-lg text-white" style={{ direction: "rtl", lineHeight: 1.3 }}>
+             <p className="text-3xl md:text-5xl font-bold leading-tight drop-shadow-lg text-white mb-4" style={{ direction: "rtl", lineHeight: 1.3 }}>
                {currentChallenge.content}
              </p>
+
+             {/* חיווי מודל AI */}
+             {currentChallenge.usedModel && (
+                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 text-[10px] text-gray-500 uppercase tracking-widest opacity-50">
+                     <Cpu size={10} />
+                     <span>Powered by {currentChallenge.usedModel}</span>
+                 </div>
+             )}
           </motion.div>
 
           <div className="flex gap-8 mt-12 w-full justify-center">
@@ -538,7 +533,7 @@ export default function TruthOrDareGame() {
         </motion.div>
       )}
 
-      {/* --- PENALTY (SHOT) VIEW --- */}
+      {/* --- PENALTY --- */}
       {gameState === "penalty" && (
         <motion.div 
           className="absolute inset-0 z-50 bg-red-900/95 flex flex-col items-center justify-center"
