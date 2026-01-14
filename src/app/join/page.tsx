@@ -1,35 +1,89 @@
-// src/app/join/page.tsx
-
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, Suspense } from "react";
 import { motion } from "framer-motion";
-import { Upload, User, ArrowRight, Camera, Check } from "lucide-react";
+import { Upload, User, ArrowRight, Camera, Check, Loader2, AlertTriangle } from "lucide-react";
+import { supabase } from "@/app/lib/supabase";
+import { useSearchParams } from "next/navigation";
 
-export default function PlayerJoinPage() {
+// --- קומפוננטת הטופס הפנימית ---
+function JoinForm() {
+  const searchParams = useSearchParams();
+  // שליפת ה-ID של המארח מהכתובת
+  const hostId = searchParams.get('hostId');
+
   const [name, setName] = useState("");
   const [gender, setGender] = useState<"male" | "female" | "other" | "">("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // טיפול בהעלאת תמונה
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // פונקציית כיווץ תמונה
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const maxWidth = 300;
+          const scaleSize = maxWidth / img.width;
+          canvas.width = maxWidth;
+          canvas.height = img.height * scaleSize;
+          const ctx = canvas.getContext("2d");
+          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", 0.7));
+        };
+      };
+    });
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedImage = await compressImage(file);
+        setImagePreview(compressedImage);
+      } catch (err) {
+        console.error(err);
+        alert("שגיאה בעיבוד תמונה");
+      }
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (!hostId) {
+      setError("קוד משחק לא תקין (חסר מזהה מארח). נסה לסרוק שוב.");
+      return;
+    }
     if (!name || !gender) return alert("חובה למלא שם ומין!");
     
-    // כאן בעתיד נשלח את הנתונים לשרת (Firebase/Socket)
-    // כרגע נדמה הצלחה
-    setIsSubmitted(true);
+    setLoading(true);
+    setError(null);
+
+    try {
+        const { error: insertError } = await supabase
+            .from('players')
+            .insert([
+                { 
+                    name, 
+                    gender, 
+                    avatar: imagePreview || `bg-${['red','blue','green','purple','pink'][Math.floor(Math.random()*5)]}-500`,
+                    host_id: hostId // <--- הקישור הקריטי למארח
+                }
+            ]);
+
+        if (insertError) throw insertError;
+        setIsSubmitted(true);
+    } catch (err: any) {
+        console.error("Join Error:", err);
+        setError("הייתה בעיה בהצטרפות. וודא שהמארח מחובר.");
+    } finally {
+        setLoading(false);
+    }
   };
 
   if (isSubmitted) {
@@ -43,27 +97,24 @@ export default function PlayerJoinPage() {
           <Check size={48} />
         </motion.div>
         <h1 className="text-3xl font-bold mb-2">אתה בפנים! 🔥</h1>
-        <p className="text-gray-400">תסתכל על הטלוויזיה, המשחק עומד להתחיל...</p>
+        <p className="text-gray-400">תסתכל על הטלוויזיה, השם שלך יופיע שם.</p>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-black text-white p-6 flex flex-col items-center">
-      {/* כותרת */}
-      <motion.div 
-        initial={{ y: -50, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="w-full max-w-md mt-4 mb-8 text-center"
-      >
-        <h1 className="text-4xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">
-          JOIN THE PARTY
-        </h1>
-        <p className="text-gray-400 text-sm mt-1">הכנס את הפרטים כדי לשחק</p>
-      </motion.div>
+  // מסך שגיאה אם אין Host ID
+  if (!hostId) {
+     return (
+        <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
+             <AlertTriangle className="text-red-500 w-16 h-16 mb-4" />
+             <h1 className="text-2xl font-bold">שגיאה בחיבור</h1>
+             <p className="text-gray-400 mt-2">לא נמצא קוד משחק. אנא סרוק את ה-QR שוב מהטלוויזיה.</p>
+        </div>
+     );
+  }
 
-      <div className="w-full max-w-md space-y-8">
-        
+  return (
+    <div className="w-full max-w-md space-y-8 pb-10">
         {/* העלאת תמונה */}
         <div className="flex justify-center">
           <div className="relative">
@@ -82,13 +133,7 @@ export default function PlayerJoinPage() {
                 <Upload size={16} />
               </div>
             </label>
-            <input 
-              id="avatar-upload" 
-              type="file" 
-              accept="image/*" 
-              onChange={handleImageUpload} 
-              className="hidden" 
-            />
+            <input id="avatar-upload" type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
           </div>
         </div>
 
@@ -107,15 +152,11 @@ export default function PlayerJoinPage() {
           </div>
         </div>
 
-        {/* בחירת מין (חשוב ל-AI) */}
+        {/* בחירת מין */}
         <div className="space-y-2">
           <label className="text-gray-400 text-sm font-bold uppercase tracking-wider">מגדר (בשביל ה-AI)</label>
           <div className="grid grid-cols-3 gap-3">
-            {[
-              { id: "male", label: "גבר" },
-              { id: "female", label: "אישה" },
-              { id: "other", label: "אחר" }
-            ].map((option) => (
+            {[ { id: "male", label: "גבר" }, { id: "female", label: "אישה" }, { id: "other", label: "אחר" } ].map((option) => (
               <button
                 key={option.id}
                 onClick={() => setGender(option.id as any)}
@@ -131,16 +172,43 @@ export default function PlayerJoinPage() {
           </div>
         </div>
 
+        {error && (
+            <div className="text-red-400 text-sm text-center bg-red-900/20 p-3 rounded-lg border border-red-500/30">
+                {error}
+            </div>
+        )}
+
         {/* כפתור סיום */}
         <motion.button
           whileTap={{ scale: 0.95 }}
           onClick={handleSubmit}
-          className="w-full bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 p-5 rounded-2xl font-black text-xl uppercase tracking-widest shadow-[0_0_20px_rgba(168,85,247,0.5)] flex items-center justify-center gap-2 mt-8"
+          disabled={loading}
+          className="w-full bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 p-5 rounded-2xl font-black text-xl uppercase tracking-widest shadow-[0_0_20px_rgba(168,85,247,0.5)] flex items-center justify-center gap-2 mt-8 disabled:opacity-50"
         >
-          אני מוכן <ArrowRight />
+          {loading ? <Loader2 className="animate-spin" /> : <>אני מוכן <ArrowRight /></>}
         </motion.button>
-
-      </div>
     </div>
   );
+}
+
+// --- קומפוננטה ראשית (עוטפת ב-Suspense) ---
+export default function PlayerJoinPage() {
+    return (
+        <div className="min-h-screen bg-black text-white p-6 flex flex-col items-center overflow-y-auto">
+            <motion.div 
+                initial={{ y: -50, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                className="w-full max-w-md mt-4 mb-8 text-center"
+            >
+                <h1 className="text-4xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">
+                JOIN THE PARTY
+                </h1>
+                <p className="text-gray-400 text-sm mt-1">הכנס את הפרטים כדי לשחק</p>
+            </motion.div>
+            
+            <Suspense fallback={<div className="text-white">טוען נתונים...</div>}>
+                <JoinForm />
+            </Suspense>
+        </div>
+    );
 }

@@ -24,6 +24,7 @@ type Player = {
   name: string;
   gender: "male" | "female" | "other";
   avatar: string; 
+  host_id: string; // הוספנו את זה לטיפוס
 };
 
 type Challenge = {
@@ -49,56 +50,85 @@ export default function TruthOrDareGame() {
 
   // --- Realtime Players Listener & Auth Listener ---
   useEffect(() => {
-    // 1. הגדרת הכתובת ל-QR
-    if (typeof window !== "undefined") {
-      setJoinUrl(`${window.location.origin}/join`);
-    }
-
-    // 2. בדיקת משתמש מחובר
-    const checkUser = async () => {
+    // שלב א: בדיקת משתמש מחובר
+    const initGame = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setAuthUser(user);
-    };
-    checkUser();
 
-    // 3. טעינת שחקנים והאזנה לשינויים
-    const fetchPlayers = async () => {
-        const { data, error } = await supabase.from('players').select('*').order('created_at', { ascending: true });
+      if (user && typeof window !== "undefined") {
+        // יצירת לינק ייחודי שכולל את מזהה המארח
+        setJoinUrl(`${window.location.origin}/join?hostId=${user.id}`);
         
-        if (error) {
-            console.error("Supabase Connection Error:", error);
-            setIsConnected(false);
-        } else {
-            setIsConnected(true);
-            if (data) setPlayers(data as Player[]);
-        }
+        // טעינת שחקנים ראשונית - רק של המארח הזה
+        loadHostPlayers(user.id);
+        
+        // הפעלת האזנה לשינויים בזמן אמת - רק לחדר הזה
+        subscribeToHostRoom(user.id);
+      }
     };
-    fetchPlayers();
 
-    const channel = supabase
-        .channel('realtime players')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'players' }, (payload) => {
-            const newPlayer = payload.new as Player;
-            setPlayers((prev) => [...prev, newPlayer]);
-            playSpinSound(); 
-        })
-        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'players' }, (payload) => {
-            setPlayers((prev) => prev.filter(p => p.id !== payload.old.id));
-        })
-        .subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-                setIsConnected(true);
-            }
-            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-                console.error("Realtime Error:", status);
-                setIsConnected(false);
-            }
-        });
+    initGame();
 
     return () => {
-        supabase.removeChannel(channel);
+      supabase.removeAllChannels();
     };
   }, []);
+
+  // פונקציה לטעינת שחקנים
+  const loadHostPlayers = async (hostId: string) => {
+    const { data, error } = await supabase
+      .from('players')
+      .select('*')
+      .eq('host_id', hostId) // סינון לפי מארח
+      .order('created_at', { ascending: true });
+    
+    if (error) {
+        console.error("Supabase Connection Error:", error);
+        setIsConnected(false);
+    } else {
+        setIsConnected(true);
+        if (data) setPlayers(data as Player[]);
+    }
+  };
+
+  // פונקציה להאזנה לזמן אמת
+  const subscribeToHostRoom = (hostId: string) => {
+    const channel = supabase
+      .channel(`room_${hostId}`) // שם ערוץ ייחודי
+      .on(
+        'postgres_changes', 
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'players',
+          filter: `host_id=eq.${hostId}` // סינון קריטי: נקבל רק שחקנים שנרשמו למארח הזה
+        }, 
+        (payload) => {
+          const newPlayer = payload.new as Player;
+          setPlayers((prev) => [...prev, newPlayer]);
+          playSpinSound(); 
+        }
+      )
+      .on(
+        'postgres_changes', 
+        { 
+          event: 'DELETE', 
+          schema: 'public', 
+          table: 'players',
+          filter: `host_id=eq.${hostId}`
+        }, 
+        (payload) => {
+          setPlayers((prev) => prev.filter(p => p.id !== payload.old.id));
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') setIsConnected(true);
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.error("Realtime Error:", status);
+            setIsConnected(false);
+        }
+      });
+  };
 
   // --- Audio placeholders ---
   const playSpinSound = () => { /* Play spin.mp3 */ };
@@ -112,11 +142,19 @@ export default function TruthOrDareGame() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setAuthUser(null);
+    setPlayers([]); // ניקוי מסך בהתנתקות
+    supabase.removeAllChannels();
   };
 
   const resetGame = async () => {
+    if (!authUser) return;
     if (confirm("בטוח שאתה רוצה לאפס את המשחק ולמחוק את כל השחקנים?")) {
-        const { error } = await supabase.from('players').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        // מחיקה רק של שחקנים ששייכים למארח הזה
+        const { error } = await supabase
+          .from('players')
+          .delete()
+          .eq('host_id', authUser.id);
+          
         if (error) console.error("Error resetting:", error);
         setPlayers([]); 
     }
@@ -228,7 +266,9 @@ export default function TruthOrDareGame() {
           {/* Player Circle Display - REALTIME */}
           <div className="flex flex-wrap gap-4 justify-center items-center min-h-[100px] px-10">
             {players.length === 0 ? (
-              <div className="text-gray-500 text-xl animate-pulse">ממתין לשחקנים... סרקו את הקוד</div>
+              <div className="text-gray-500 text-xl animate-pulse">
+                {authUser ? "ממתין לשחקנים... סרקו את הקוד" : "נא להתחבר כדי להתחיל משחק"}
+              </div>
             ) : (
               players.map((p) => (
                 <motion.div 
@@ -270,7 +310,8 @@ export default function TruthOrDareGame() {
             <div className="mt-8 flex justify-center gap-4">
               <button 
                 onClick={resetGame}
-                className="px-4 py-3 bg-red-900/50 hover:bg-red-800 rounded-xl flex items-center gap-2 transition text-xs"
+                disabled={!authUser}
+                className="px-4 py-3 bg-red-900/50 hover:bg-red-800 rounded-xl flex items-center gap-2 transition text-xs disabled:opacity-30"
                 title="איפוס משחק"
               >
                 <Trash2 size={16} />
@@ -278,7 +319,7 @@ export default function TruthOrDareGame() {
               
               <button 
                 onClick={spinTheWheel}
-                disabled={players.length < 2}
+                disabled={players.length < 2 || !authUser}
                 className="flex-1 px-12 py-4 bg-gradient-to-r from-pink-600 to-purple-600 rounded-xl font-bold text-2xl hover:scale-105 transition-transform shadow-[0_0_30px_rgba(236,72,153,0.6)] disabled:opacity-50 disabled:hover:scale-100 text-white"
               >
                 SPIN IT!
@@ -287,7 +328,7 @@ export default function TruthOrDareGame() {
           </div>
 
           <div className="absolute bottom-10 right-10 bg-white p-3 rounded-xl opacity-90 shadow-[0_0_20px_rgba(255,255,255,0.3)] flex flex-col items-center gap-2 transform rotate-3 hover:rotate-0 transition-transform">
-             {joinUrl && (
+             {authUser && joinUrl ? (
                 <div style={{ height: "auto", maxWidth: "120px", width: "100%" }}>
                   <QRCode
                     size={256}
@@ -296,6 +337,10 @@ export default function TruthOrDareGame() {
                     viewBox={`0 0 256 256`}
                   />
                 </div>
+             ) : (
+               <div className="w-[120px] h-[120px] bg-gray-300 flex items-center justify-center text-black text-xs text-center p-2 font-bold">
+                 התחבר כדי להציג קוד
+               </div>
              )}
             <p className="text-black text-[10px] uppercase font-black tracking-widest">Scan to Join</p>
           </div>
