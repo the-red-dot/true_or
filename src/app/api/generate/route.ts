@@ -7,11 +7,13 @@ const API_KEYS = [
   process.env.GOOGLE_API_KEY_SECONDARY
 ].filter(Boolean) as string[];
 
-// רשימת המודלים לפי סדר עדיפות כפי שביקשת
-// המערכת תנסה את הראשון, ורק אם תיכשל תעבור לשני
+// רשימת המודלים לפי סדר עדיפות ומכסות
+// עודכן לפי הרשימה העדכנית כדי למנוע שגיאות 404 ו-429
 const MODELS = [
-  "gemini-3.0-flash-preview",         // מודל ראשי (Main)
-  "gemini-2.5-flash-preview-09-2025"  // מודל גיבוי (Backup)
+  "gemini-2.5-flash",          // מודל יציב ומהיר (מומלץ כראשי)
+  "gemini-3-flash-preview",    // המודל החדש ביותר (שם מתוקן ללא .0)
+  "gemini-2.0-flash",          // מודל מאוזן עם מכסות נפרדות לרוב
+  "gemini-2.5-flash-lite"      // מודל קליל לגיבוי חירום
 ];
 
 export async function POST(req: Request) {
@@ -57,7 +59,7 @@ export async function POST(req: Request) {
     for (const apiKey of API_KEYS) {
         const genAI = new GoogleGenerativeAI(apiKey);
 
-        // לולאה פנימית: מעבר על המודלים (3.0 -> 2.5) עבור כל מפתח
+        // לולאה פנימית: מעבר על המודלים לפי הסדר
         for (const modelName of MODELS) {
             try {
                 // ניסיון יצירה
