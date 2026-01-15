@@ -1,3 +1,5 @@
+// truth-or-dare-ai\src\app\page.tsx
+
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -66,13 +68,19 @@ export default function TruthOrDareGame() {
 
   // --- ניהול תורות אוטומטי (שחקן ראשון מקבל שליטה) ---
   useEffect(() => {
+    // אם אין שחקנים, מאפסים את השליטה
+    if (players.length === 0) {
+        if (lastActivePlayer !== null) setLastActivePlayer(null);
+        return;
+    }
+
     // אם אנחנו בלובי או מחכים לספין, ואין שחקן פעיל (או שהשחקן הפעיל עזב)
-    // נעביר את השרביט לשחקן הראשון ברשימה
-    if ((gameState === 'lobby' || gameState === 'waiting_for_spin') && players.length > 0) {
+    if (gameState === 'lobby' || gameState === 'waiting_for_spin') {
         const currentPlayerExists = players.find(p => p.id === lastActivePlayer?.id);
         
+        // אם השחקן השולט לא קיים (עזב) או שעדיין לא הוגדר - מעבירים לראשון ברשימה
         if (!lastActivePlayer || !currentPlayerExists) {
-            // ברירת מחדל: השחקן הראשון ברשימה מקבל את השליטה
+            console.log("Transferring control to first player:", players[0].name);
             setLastActivePlayer(players[0]);
         }
     }
@@ -82,11 +90,19 @@ export default function TruthOrDareGame() {
   const syncGameStateToDB = async (status: string, currentPlayerId: string | null = null, challenge: any = null) => {
       if (!authUser) return;
       
+      // מוודאים שתמיד נשלח ID חוקי של שחקן שולט
+      let activeControllerId = lastActivePlayer?.id;
+      
+      // מנגנון גיבוי: אם אין שחקן שולט, ננסה לקחת את הראשון מהרשימה המקומית
+      if (!activeControllerId && players.length > 0) {
+          activeControllerId = players[0].id;
+      }
+
       await supabase.from('game_states').upsert({
           host_id: authUser.id,
           status: status,
           current_player_id: currentPlayerId,
-          last_active_player_id: lastActivePlayer?.id, // הטלפון ידע שזה הוא לפי ה-ID הזה
+          last_active_player_id: activeControllerId, // קריטי: זה מה שפותח את התפריט בטלפון
           heat_level: heatLevel,
           challenge_text: challenge?.content || null,
           challenge_type: challengeType,
@@ -122,7 +138,14 @@ export default function TruthOrDareGame() {
           .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'players', filter: `host_id=eq.${userId}` }, 
              (payload) => setPlayers(prev => [...prev, payload.new as Player]))
           .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'players', filter: `host_id=eq.${userId}` }, 
-             (payload) => setPlayers(prev => prev.filter(p => p.id !== payload.old.id)))
+             (payload) => {
+                 setPlayers(prev => prev.filter(p => p.id !== payload.old.id));
+                 // אם השחקן הנבחר הוא זה שעזב, מבטלים את הבחירה
+                 if (selectedPlayer?.id === payload.old.id) {
+                     setSelectedPlayer(null);
+                     setGameState('lobby');
+                 }
+             })
           .on('broadcast', { event: 'game_event' }, (event) => handleGameEvent(event.payload))
           .subscribe((status) => setIsConnected(status === 'SUBSCRIBED'));
     };
@@ -143,7 +166,6 @@ export default function TruthOrDareGame() {
         if (type === 'vote_shot') {
              setVotes(v => {
                  const newShots = v.shots + 1;
-                 // אם 40% מהשחקנים הצביעו שוט
                  if (newShots > Math.max(1, players.length * 0.4)) triggerGroupShot();
                  return { ...v, shots: newShots };
              });
@@ -163,9 +185,9 @@ export default function TruthOrDareGame() {
     });
 
     return () => { authListener.subscription.unsubscribe(); if (channel) supabase.removeChannel(channel); };
-  }, [players.length]); // תלות ב-players חשובה לחישובי רוב
+  }, [players.length, selectedPlayer]); 
 
-  // הצבעות אוטומטיות (50% לכל כיוון)
+  // הצבעות אוטומטיות
   useEffect(() => {
       if (gameState !== 'challenge') return;
       const voters = Math.max(1, players.length - 1);
@@ -198,8 +220,7 @@ export default function TruthOrDareGame() {
   useEffect(() => {
     if (gameState === "revealing" && selectedPlayer && challengeType && authUser) {
       setLoadingAI(true);
-      // קריאה ל-API (שכרגע שולף מה-DB)
-      const prevTasks: string[] = []; // אפשר לשלוף היסטוריה אם רוצים
+      const prevTasks: string[] = []; 
       
       fetch("/api/generate", {
             method: "POST",
@@ -223,8 +244,6 @@ export default function TruthOrDareGame() {
 
   const handleDone = () => {
     confetti({ particleCount: 200, spread: 120 });
-    
-    // העברת השרביט לשחקן שביצע
     setLastActivePlayer(selectedPlayer);
     
     setTimeout(() => {
@@ -234,12 +253,10 @@ export default function TruthOrDareGame() {
   };
 
   const handleSkip = () => {
-    setGameState("penalty"); // מסך שוט
+    setGameState("penalty");
     playShotSound();
     
-    // לוגיקה אוטומטית: אחרי 5 שניות ממשיכים
     setTimeout(() => {
-        // גם אם דילג, הוא מקבל את השרביט כדי לסובב את הגלגל לאחרים
         setLastActivePlayer(selectedPlayer); 
         setGameState("waiting_for_spin");
         setSelectedPlayer(null);
@@ -263,6 +280,10 @@ export default function TruthOrDareGame() {
 
   const handleLogout = async () => {
       if (confirm("האם אתה בטוח שברצונך להתנתק? זה יסגור את החדר.")) {
+          // לפני שמתנתקים, מאפסים את הסטייט ב-DB כדי שכולם יעופו
+          if (authUser) {
+              await supabase.from('game_states').delete().eq('host_id', authUser.id);
+          }
           await supabase.auth.signOut();
       }
   };
@@ -270,9 +291,26 @@ export default function TruthOrDareGame() {
   const resetGame = async () => {
     if (!authUser) return;
     if (confirm("בטוח שאתה רוצה לאפס את המשחק ולמחוק את כל השחקנים?")) {
+        // 1. מחיקת שחקנים והיסטוריה
         await supabase.from('players').delete().eq('host_id', authUser.id);
         await supabase.from('challenge_history').delete().eq('host_id', authUser.id);
+        
+        // 2. איפוס מצב המשחק ב-DB ללובי נקי (חשוב מאוד!)
+        await supabase.from('game_states').upsert({
+            host_id: authUser.id,
+            status: 'lobby',
+            current_player_id: null,
+            last_active_player_id: null,
+            challenge_text: null,
+            updated_at: new Date().toISOString()
+        });
+
+        // 3. איפוס לוקאלי
         setPlayers([]); 
+        setGameState('lobby');
+        setLastActivePlayer(null);
+        setSelectedPlayer(null);
+        setCurrentChallenge(null);
     }
   };
   
@@ -288,7 +326,7 @@ export default function TruthOrDareGame() {
     <main className="h-screen w-full bg-black text-white font-sans overflow-hidden relative selection:bg-pink-500 flex flex-col" dir="rtl">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-black to-black z-0 pointer-events-none" />
       
-      {/* Top Bar - מופיע רק אם מחוברים */}
+      {/* Top Bar */}
       {authUser && (
         <div className="absolute top-6 left-6 z-50 flex items-center gap-4 bg-black/40 backdrop-blur px-4 py-2 rounded-full border border-white/10">
             <div className="flex flex-col text-left">
@@ -308,7 +346,7 @@ export default function TruthOrDareGame() {
       {/* --- Main Game Area --- */}
       <div className="flex-1 flex flex-col items-center justify-center relative z-10 p-10 h-full">
           
-          {/* מצב מנותק - כפתור התחברות */}
+          {/* מצב מנותק */}
           {!authUser && (
               <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex flex-col items-center text-center space-y-8 p-10 bg-white/5 rounded-3xl border border-white/10 backdrop-blur-xl">
                   <div className="bg-pink-600/20 p-6 rounded-full">
@@ -322,7 +360,7 @@ export default function TruthOrDareGame() {
               </motion.div>
           )}
 
-          {/* LOBBY & WAITING - Big Player Circle (רק כשמחוברים) */}
+          {/* LOBBY & WAITING */}
           {authUser && (gameState === "lobby" || gameState === "waiting_for_spin") && (
             <div className="flex flex-col items-center w-full max-w-6xl h-full justify-center">
                 <h1 className="text-8xl md:text-9xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 drop-shadow-[0_0_30px_rgba(236,72,153,0.5)] mb-12 tracking-tighter">
@@ -333,10 +371,11 @@ export default function TruthOrDareGame() {
                     {players.length === 0 && (
                         <div className="text-2xl text-gray-500 animate-pulse">ממתין לשחקנים... סרקו את הקוד</div>
                     )}
-                    {players.map((p) => {
+                    {players.map((p, index) => {
                         const playerReactions = reactions.filter(r => r.playerId === p.id);
-                        // בדיקה מי השחקן השולט: או שזה השחקן האחרון, או שזה השחקן הראשון בלובי
-                        const isController = lastActivePlayer?.id === p.id;
+                        const isFirstPlayer = gameState === 'lobby' && index === 0;
+                        const isLastActive = gameState === 'waiting_for_spin' && lastActivePlayer?.id === p.id;
+                        const isController = isFirstPlayer || isLastActive;
 
                         return (
                             <div key={p.id} className="relative group">
@@ -366,7 +405,7 @@ export default function TruthOrDareGame() {
                     })}
                 </div>
 
-                {/* שליטה ידנית למארח (גיבוי) */}
+                {/* שליטה ידנית למארח */}
                 <div className="mt-12 bg-white/5 backdrop-blur-xl p-4 rounded-2xl border border-white/10 flex items-center gap-6">
                     <span className="text-cyan-400 font-bold flex items-center gap-2"><Flame /> {heatLevel}</span>
                     <input type="range" min="1" max="10" value={heatLevel} onChange={handleHeatChange} className="w-32 accent-pink-500" />
@@ -375,7 +414,7 @@ export default function TruthOrDareGame() {
             </div>
           )}
 
-          {/* SPINNING ANIMATION */}
+          {/* SPINNING */}
           {authUser && gameState === 'spinning' && (
               <div className="relative">
                   <motion.div animate={{ rotate: 360 * 5 }} transition={{ duration: 3, ease: "circOut" }} className="w-96 h-96 rounded-full border-[12px] border-dashed border-cyan-500/30 flex items-center justify-center">
@@ -394,10 +433,9 @@ export default function TruthOrDareGame() {
               </motion.div>
           )}
 
-          {/* CHALLENGE CARD */}
+          {/* CHALLENGE */}
           {authUser && (gameState === 'challenge' || gameState === 'revealing') && currentChallenge && selectedPlayer && (
               <div className="flex flex-col items-center justify-between h-full w-full py-10">
-                  {/* Card */}
                   <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-5xl px-4 relative z-20">
                       <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-12 rounded-[3rem] text-center shadow-2xl relative overflow-hidden">
                           <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-pink-500 to-cyan-500" />
@@ -406,7 +444,6 @@ export default function TruthOrDareGame() {
                           </div>
                           <h3 className="text-5xl md:text-7xl font-black leading-tight mb-8 drop-shadow-lg" style={{ direction: 'rtl' }}>{currentChallenge.content}</h3>
                           
-                          {/* Vote Bar */}
                           <div className="flex items-center gap-4 max-w-lg mx-auto bg-black/50 p-2 rounded-full">
                               <ThumbsUp className="text-green-500" />
                               <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden">
@@ -426,7 +463,6 @@ export default function TruthOrDareGame() {
                       </div>
                   </motion.div>
 
-                  {/* Reaction Circle - Small Players */}
                   <div className="flex justify-center gap-4 mt-8 flex-wrap px-10">
                       {players.filter(p => p.id !== selectedPlayer.id).map(p => {
                           const playerReactions = reactions.filter(r => r.playerId === p.id);
@@ -464,7 +500,7 @@ export default function TruthOrDareGame() {
             )}
           </AnimatePresence>
           
-          {/* Always Show QR if Joined (Fixed Corner) - קוד QR קבוע */}
+          {/* Always Show QR if Joined (Fixed Corner) */}
           {authUser && joinUrl && (
                <div className={`absolute z-40 transition-all duration-500 bg-white p-2 rounded-xl shadow-2xl ${
                    gameState === 'lobby' || gameState === 'waiting_for_spin'

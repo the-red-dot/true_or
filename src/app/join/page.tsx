@@ -1,3 +1,5 @@
+// truth-or-dare-ai\src\app\join\page.tsx
+
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";

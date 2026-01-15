@@ -1,3 +1,5 @@
+// truth-or-dare-ai\src\app\api\generate\route.ts
+
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
