@@ -1,7 +1,7 @@
 // truth-or-dare-ai\src\app\join\page.tsx
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, Suspense, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, User, ArrowLeft, Camera, Check, Loader2, AlertTriangle, ThumbsUp, ThumbsDown, Beer, XCircle, Flame, RefreshCw, LogOut } from "lucide-react";
 import { supabase } from "@/app/lib/supabase";
@@ -38,6 +38,12 @@ function GameController() {
   const [gameState, setGameState] = useState<any>(null);
   const [localHeat, setLocalHeat] = useState(1);
 
+  // שימוש ב-Ref כדי שנוכל לגשת ל-myPlayerId המעודכן בתוך ה-Callback של ה-Realtime
+  const myPlayerIdRef = useRef<string | null>(null);
+  useEffect(() => {
+      myPlayerIdRef.current = myPlayerId;
+  }, [myPlayerId]);
+
   // בדיקה אם השחקן כבר רשום (localStorage)
   useEffect(() => {
       if (hostId) {
@@ -51,7 +57,7 @@ function GameController() {
 
   // האזנה למצב המשחק מהטלוויזיה
   useEffect(() => {
-      if (!hostId || !myPlayerId) return;
+      if (!hostId) return; // לא צריך myPlayerId כדי להאזין, אבל הוא עוזר
 
       // קריאה ראשונית
       supabase.from('game_states').select('*').eq('host_id', hostId).single()
@@ -62,8 +68,8 @@ function GameController() {
             }
         });
 
-      // האזנה לשינויים
-      const channel = supabase
+      // האזנה לשינויים בסטייט המשחק
+      const gameStateChannel = supabase
         .channel(`gamestate_listener_${hostId}`)
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_states', filter: `host_id=eq.${hostId}` },
         (payload) => {
@@ -74,14 +80,37 @@ function GameController() {
             }
         })
         .subscribe();
+    
+    // האזנה למחיקת שחקנים - כדי לדעת אם הועפנו או שהמשחק אופס
+    const playersChannel = supabase
+        .channel(`players_listener_${hostId}`)
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'players', filter: `host_id=eq.${hostId}` },
+        (payload) => {
+            // בדיקה האם השחקן שנמחק הוא אני
+            const deletedId = payload.old.id;
+            if (deletedId && deletedId === myPlayerIdRef.current) {
+                // נמחקתי! איפוס מיידי
+                handleKicked();
+            }
+        })
+        .subscribe();
 
-      return () => { supabase.removeChannel(channel); };
-  }, [hostId, myPlayerId]);
+      return () => { 
+          supabase.removeChannel(gameStateChannel); 
+          supabase.removeChannel(playersChannel);
+      };
+  }, [hostId]); // הסרתי את myPlayerId כדי למנוע יצירה מחדש של ה-channels
+
+  const handleKicked = () => {
+      localStorage.removeItem(`player_id_${hostId}`);
+      setMyPlayerId(null);
+      setIsSubmitted(false);
+      setGameState(null);
+      // אין צורך ב-reload מלא, פשוט חזרה למסך הרשמה
+  };
 
   const sendAction = async (type: GameEvent['type'], payload: any = {}) => {
       if (!hostId || !myPlayerId) return;
-      // שימוש ב-track כדי לשלוח את האירוע, או בשיטת Broadcast הרגילה
-      // נוודא שאנחנו שולחים לחדר הנכון
       await supabase.channel(`room_${hostId}`).send({
           type: 'broadcast',
           event: 'game_event',
@@ -98,15 +127,12 @@ function GameController() {
       sendAction('trigger_spin');
   };
 
-  // פונקציית התנתקות
+  // פונקציית התנתקות יזומה
   const handleLeaveGame = async () => {
       if(confirm("האם אתה בטוח שברצונך לצאת מהמשחק?")) {
           if (myPlayerId) {
               await supabase.from('players').delete().eq('id', myPlayerId);
-              localStorage.removeItem(`player_id_${hostId}`);
-              setMyPlayerId(null);
-              setIsSubmitted(false);
-              window.location.reload();
+              // ה-listener כבר יתפוס את המחיקה ויבצע handleKicked
           }
       }
   };
@@ -165,7 +191,6 @@ function GameController() {
       const isMyTurnToPlay = gameState?.current_player_id === myPlayerId;
       
       // בדיקה אם אני שולט בשרביט (מסובב את הגלגל)
-      // הפעם אנחנו סומכים ב-100% על מה שהטלוויזיה אומרת ב-DB
       const isMyTurnToSpin = gameState?.last_active_player_id === myPlayerId && 
                              (gameState?.status === 'lobby' || gameState?.status === 'waiting_for_spin');
 

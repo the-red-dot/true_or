@@ -15,7 +15,8 @@ import {
   Beer,
   ThumbsUp,
   ThumbsDown,
-  LogIn
+  LogIn,
+  Play
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import QRCode from "react-qr-code";
@@ -171,6 +172,8 @@ export default function TruthOrDareGame() {
                      if (selectedPlayer?.id === payload.old.id) {
                          setGameState('waiting_for_spin');
                          setSelectedPlayer(null);
+                         // עדכון DB לביטול המצב התקוע
+                         syncGameStateToDB('waiting_for_spin', null, null);
                          alert("השחקן הפעיל עזב את המשחק!");
                      }
                  }
@@ -452,11 +455,16 @@ export default function TruthOrDareGame() {
                     })}
                 </div>
 
-                {/* שליטה ידנית למארח */}
+                {/* שליטה ידנית למארח - כולל כפתור התחלה */}
                 <div className="mt-12 bg-white/5 backdrop-blur-xl p-4 rounded-2xl border border-white/10 flex items-center gap-6">
-                    <span className="text-cyan-400 font-bold flex items-center gap-2"><Flame /> {heatLevel}</span>
+                    {gameState === 'lobby' && players.length >= 2 && (
+                        <button onClick={spinTheWheel} className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-500 rounded-xl font-bold flex items-center gap-2 hover:scale-105 transition-transform shadow-lg">
+                            <Play className="fill-white" /> התחל משחק
+                        </button>
+                    )}
+                    <span className="text-cyan-400 font-bold flex items-center gap-2 border-r border-white/20 pr-6 mr-2"><Flame /> {heatLevel}</span>
                     <input type="range" min="1" max="10" value={heatLevel} onChange={handleHeatChange} className="w-32 accent-pink-500" />
-                    <button onClick={() => resetGame(true)} className="p-2 hover:bg-red-900/50 rounded-lg text-red-400" title="איפוס משחק"><Trash2 size={20}/></button>
+                    <button onClick={() => resetGame(true)} className="p-2 hover:bg-red-900/50 rounded-lg text-red-400 ml-4" title="איפוס משחק"><Trash2 size={20}/></button>
                 </div>
             </div>
           )}
