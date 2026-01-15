@@ -1,12 +1,9 @@
-// src\app\api\generate\route.ts
-
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 // אתחול לקוח Supabase בצד השרת
-// הערה: וודא שיש לך את המשתנים האלו ב-.env.local
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!; // או SERVICE_ROLE אם צריך הרשאות מיוחדות
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function POST(req: Request) {
@@ -14,28 +11,23 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { playerName, playerGender, heatLevel, type, previousChallenges } = body;
 
-    // נרמול מגדר (למקרה שהתקבל 'other' או משהו אחר, נלך על ניטרלי או ננסה להתאים)
-    // בדאטה בייס שלנו יש: 'male', 'female', 'neutral'
+    // נרמול מגדר
     let dbGender = 'neutral';
     if (playerGender === 'male') dbGender = 'male';
     if (playerGender === 'female') dbGender = 'female';
-    // אם זה 'other', נשאיר 'neutral' או נשלוף משימות ניטרליות
 
-    // טווח רמות: כדי לא להגביל רק לרמה 5 בדיוק, נאפשר טווח של +/- 1
-    // אלא אם זה רמה 1 או 10
+    // טווח רמות: גמישות של +/- 1
     let minHeat = heatLevel === 1 ? 1 : heatLevel - 1;
     let maxHeat = heatLevel === 10 ? 10 : heatLevel + 1;
-    // אם רוצים דיוק מוחלט, אפשר לעשות minHeat = heatLevel ו-maxHeat = heatLevel
 
     // שליפת משימות רלוונטיות מה-DB
-    // נשלוף משימות שמתאימות למין השחקן (או ניטרליות) ולרמת החום
     const { data: tasks, error } = await supabase
       .from('game_tasks')
       .select('*')
       .eq('type', type) // 'אמת' או 'חובה'
       .gte('heat_level', minHeat)
       .lte('heat_level', maxHeat)
-      .or(`gender.eq.${dbGender},gender.eq.neutral`); // או המין הספציפי או ניטרלי
+      .or(`gender.eq.${dbGender},gender.eq.neutral`);
 
     if (error) {
       console.error("Supabase Error:", error);
@@ -43,7 +35,7 @@ export async function POST(req: Request) {
     }
 
     if (!tasks || tasks.length === 0) {
-        // Fallback למקרה שאין משימות מתאימות בדיוק (נדיר אם ממלאים את ה-DB טוב)
+        // Fallback למקרה שאין משימות מתאימות
         return NextResponse.json({
             content: `המערכת לא מצאה משימה לרמה ${heatLevel}... אז פשוט תעשו שוט לחיים! 🥂`,
             spiciness: heatLevel,
@@ -52,10 +44,9 @@ export async function POST(req: Request) {
         });
     }
 
-    // סינון משימות שכבר היו (לפי הטקסט שנשלח מהקלאיינט)
-    // previousChallenges הוא מערך של מחרוזות
+    // סינון משימות שכבר היו
     const availableTasks = tasks.filter(t => 
-        !previousChallenges.some((prev: string) => prev === t.content)
+        !previousChallenges?.some((prev: string) => prev === t.content)
     );
 
     // אם סיימנו את כל המשימות האפשריות, נאפס ונבחר מכל המאגר
@@ -64,14 +55,11 @@ export async function POST(req: Request) {
     // בחירה רנדומלית מתוך המאגר המסונן
     const randomTask = finalPool[Math.floor(Math.random() * finalPool.length)];
 
-    // החלפת שמות (אופציונלי - אם רוצים להכניס את שם השחקן לתוך הטקסט)
-    // כרגע הדאטה בייס כתוב בפנייה ישירה ("אתה"), אז זה פחות קריטי, אבל אפשר להוסיף.
-
     return NextResponse.json({
       content: randomTask.content,
       spiciness: randomTask.heat_level,
       themeColor: randomTask.theme_color,
-      usedModel: "Supabase DB" // אינדיקציה ל-UI שהמידע הגיע מה-DB
+      usedModel: "Supabase DB"
     });
 
   } catch (error) {
