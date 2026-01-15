@@ -1,21 +1,20 @@
-// truth-or-dare-ai\src\app\join\page.tsx
+// src\app\join\page.tsx
 
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Upload, User, ArrowLeft, Camera, Check, Loader2, AlertTriangle, ThumbsUp, ThumbsDown, Beer, XCircle } from "lucide-react";
+import { Upload, ArrowLeft, Camera, Loader2, AlertTriangle, ThumbsUp, ThumbsDown, Beer, XCircle, Play, Flame } from "lucide-react";
 import { supabase } from "@/app/lib/supabase";
 import { useSearchParams } from "next/navigation";
+import { motion } from "framer-motion";
 
 // --- סוגי אירועים לשידור ---
 type GameEvent = {
-  type: 'emoji' | 'action_skip' | 'vote_like' | 'vote_dislike' | 'vote_shot';
+  type: 'emoji' | 'action_skip' | 'action_done' | 'vote_like' | 'vote_dislike' | 'vote_shot';
   payload: any;
   playerId: string;
 };
 
-// פונקציית עזר ליצירת מזהה ייחודי (כדי לא להסתמך על השרת ולעקוף RLS)
 const generateUUID = () => {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
     var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
@@ -23,23 +22,23 @@ const generateUUID = () => {
   });
 };
 
-// --- קומפוננטת השלט והטופס ---
 function GameController() {
   const searchParams = useSearchParams();
   const hostId = searchParams.get('hostId');
 
-  // State להרשמה
+  // State
   const [name, setName] = useState("");
   const [gender, setGender] = useState<"male" | "female" | "other" | "">("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
-  
-  // State למשחק פעיל
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
-  const [gameState, setGameState] = useState<any>(null); // המידע שמגיע מהטלוויזיה
+  const [gameState, setGameState] = useState<any>(null);
   
-  // בדיקה אם השחקן כבר רשום (למשל מריענון)
+  // State עבור השחקן הפעיל (בקרים)
+  const [localHeatLevel, setLocalHeatLevel] = useState(1);
+
+  // --- בדיקת הרשמה ---
   useEffect(() => {
       if (hostId) {
           const storedId = localStorage.getItem(`player_id_${hostId}`);
@@ -50,27 +49,34 @@ function GameController() {
       }
   }, [hostId]);
 
-  // האזנה למצב המשחק (Game State) מהטלוויזיה
+  // --- האזנה למצב המשחק ---
   useEffect(() => {
       if (!hostId || !myPlayerId) return;
 
-      // 1. קריאה ראשונית של המצב
       supabase.from('game_states').select('*').eq('host_id', hostId).single()
-        .then(({ data }) => { if (data) setGameState(data); });
+        .then(({ data }) => { 
+            if (data) {
+                setGameState(data);
+                if (data.heat_level) setLocalHeatLevel(data.heat_level);
+            }
+        });
 
-      // 2. האזנה לשינויים בטבלת game_states
       const channel = supabase
         .channel(`gamestate_listener_${hostId}`)
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_states', filter: `host_id=eq.${hostId}` }, 
         (payload) => {
             setGameState(payload.new);
+            // אם מישהו אחר עדכן את החום, נעדכן גם אצלנו (אלא אם זה התור שלנו, אז אנחנו שולטים)
+            if (payload.new.heat_level && payload.new.current_player_id !== myPlayerId) {
+                setLocalHeatLevel(payload.new.heat_level);
+            }
         })
         .subscribe();
 
       return () => { supabase.removeChannel(channel); };
   }, [hostId, myPlayerId]);
 
-  // פונקציית שידור פעולות (אימוג'ים, הצבעות) - נשלח לטלוויזיה בערוץ Broadcast
+  // --- שידור פעולות ---
   const sendAction = async (type: GameEvent['type'], payload: any = {}) => {
       if (!hostId || !myPlayerId) return;
       await supabase.channel(`room_${hostId}`).send({
@@ -80,7 +86,36 @@ function GameController() {
       });
   };
 
-  // --- לוגיקת הרשמה ---
+  // --- עדכון מצב המשחק (עבור השחקן הפעיל) ---
+  const updateGameState = async (updates: any) => {
+      if (!hostId) return;
+      await supabase.from('game_states').update(updates).eq('host_id', hostId);
+  };
+
+  const handleSpin = async () => {
+      // עדכון ה-DB למצב ספינינג. הטלוויזיה תקשיב ותפעיל אנימציה
+      await updateGameState({ status: 'spinning', heat_level: localHeatLevel });
+  };
+
+  const handleHeatChange = async (val: number) => {
+      setLocalHeatLevel(val);
+      // עדכון בזמן אמת ב-DB כדי שהטלוויזיה תציג
+      await updateGameState({ heat_level: val });
+  };
+
+  const handleDone = async () => {
+      // חזרה ללובי אחרי הצלחה
+      sendAction('vote_like'); // אופציונלי: לשלוח לייק אוטומטי
+      await updateGameState({ status: 'lobby' });
+  };
+
+  const handleSkip = async () => {
+      // מעבר למצב עונש
+      await updateGameState({ status: 'penalty' });
+      // הטלוויזיה תטפל בטיימר ובחזרה ללובי
+  };
+
+  // --- לוגיקת העלאת תמונה והרשמה ---
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -115,119 +150,124 @@ function GameController() {
   const handleJoin = async () => {
     if (!name || !gender) return alert("חסר שם או מין");
     setLoading(true);
-    
-    // יצירת מזהה בצד הלקוח (תיקון קריטי!)
     const newPlayerId = generateUUID();
-
     try {
         const { error } = await supabase.from('players').insert([{
-            id: newPlayerId, // שולחים את ה-ID שיצרנו
+            id: newPlayerId,
             name, gender, host_id: hostId,
             avatar: imagePreview || `bg-pink-500`
-        }]); // בלי .select() שגורם לשגיאת הרשאות
-
+        }]);
         if (error) throw error;
-        
-        // שמירת המזהה לשימוש בשלט
         setMyPlayerId(newPlayerId);
         localStorage.setItem(`player_id_${hostId}`, newPlayerId);
         setIsSubmitted(true);
     } catch (e) {
-        console.error(e);
         alert("שגיאה בהצטרפות");
     } finally {
         setLoading(false);
     }
   };
 
-  // --- תצוגת השלט (אחרי הרשמה) ---
+  // --- ממשק שלט ---
   if (isSubmitted && myPlayerId) {
       const isMyTurn = gameState?.current_player_id === myPlayerId;
       const status = gameState?.status || 'lobby';
 
       return (
-          <div className="min-h-screen bg-gray-900 text-white p-4 flex flex-col items-center justify-between" dir="rtl">
-              {/* Header */}
-              <div className="w-full flex justify-between items-center mb-6 bg-gray-800 p-4 rounded-xl shadow-lg border border-gray-700">
-                  <div className="font-bold text-lg">{name}</div>
-                  <div className="text-xs px-2 py-1 bg-green-600 rounded text-white font-bold shadow animate-pulse">מחובר</div>
+          <div className="fixed inset-0 bg-gray-900 text-white flex flex-col overflow-hidden" dir="rtl">
+              
+              {/* Header - Safe Area Top */}
+              <div className="w-full bg-gray-800 p-4 pt-safe-top flex justify-between items-center shadow-md z-20">
+                  <div className="font-bold">{name}</div>
+                  <div className={`px-2 py-0.5 rounded text-xs font-bold ${isMyTurn ? 'bg-pink-500 animate-pulse' : 'bg-green-600'}`}>
+                      {isMyTurn ? 'תורך!' : 'מחובר'}
+                  </div>
               </div>
 
-              {/* Main Content Area */}
-              <div className="flex-1 w-full flex flex-col items-center justify-center text-center space-y-6">
+              {/* Main Scrollable Area */}
+              <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-center pb-32">
                   
-                  {status === 'lobby' && (
-                      <div className="animate-pulse text-xl text-gray-400 font-bold">ממתינים למארח שיתחיל...</div>
-                  )}
+                  {/* --- תצוגה לשחקן הפעיל --- */}
+                  {isMyTurn && status === 'lobby' && (
+                      <div className="w-full max-w-sm space-y-8 animate-in fade-in slide-in-from-bottom-10">
+                          <div className="text-center">
+                              <h2 className="text-3xl font-black text-pink-500 mb-2">הכוח בידיים שלך!</h2>
+                              <p className="text-gray-400">בחר את רמת החום וסובב</p>
+                          </div>
+                          
+                          <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700">
+                              <div className="flex justify-between items-center mb-4">
+                                  <span className="flex items-center gap-2 font-bold"><Flame className="text-pink-500"/> חום: {localHeatLevel}</span>
+                                  <span className="text-xs text-gray-500 bg-black/30 px-2 py-1 rounded">
+                                      {localHeatLevel < 4 ? "קליל" : localHeatLevel < 8 ? "לוהט" : "אקסטרים"}
+                                  </span>
+                              </div>
+                              <input 
+                                type="range" min="1" max="10" 
+                                value={localHeatLevel} 
+                                onChange={(e) => handleHeatChange(parseInt(e.target.value))}
+                                className="w-full h-3 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                              />
+                          </div>
 
-                  {status === 'spinning' && (
-                      <div className="text-5xl animate-spin">🎲</div>
-                  )}
-
-                  {status === 'spotlight' && (
-                      <div className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500 animate-bounce">
-                          {isMyTurn ? "😱 זה אתה!!" : "מי זה יהיה?..."}
+                          <button 
+                            onClick={handleSpin}
+                            className="w-full py-6 bg-gradient-to-r from-pink-600 to-purple-600 rounded-2xl font-black text-2xl shadow-[0_0_20px_rgba(236,72,153,0.4)] flex items-center justify-center gap-3 active:scale-95 transition-transform"
+                          >
+                              <Play fill="white" /> סובב את הגלגל!
+                          </button>
                       </div>
                   )}
 
-                  {/* מסך המשימה - החלק האינטרקטיבי המרכזי */}
-                  {(status === 'challenge' || status === 'revealing') && (
-                      <div className="w-full space-y-6">
-                          {isMyTurn ? (
-                              // --- תצוגה לשחקן הפעיל ---
-                              <div className="bg-gray-800 p-6 rounded-2xl border-2 border-pink-500 shadow-[0_0_30px_rgba(236,72,153,0.3)]">
-                                  <h2 className="text-3xl font-black mb-4 text-pink-400">התור שלך!</h2>
-                                  <p className="text-xl mb-8 font-bold">{gameState?.challenge_type === 'אמת' ? '🤔 ענה על השאלה' : '🔥 בצע את המשימה'}</p>
-                                  
-                                  <button 
-                                    onClick={() => sendAction('action_skip')}
-                                    className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-5 px-6 rounded-2xl flex items-center justify-center gap-3 text-xl shadow-lg transform active:scale-95 transition-all border-b-4 border-red-800"
-                                  >
-                                      <XCircle size={28} /> אני מוותר (שוט!)
-                                  </button>
-                                  <p className="text-xs text-gray-400 mt-3 font-bold opacity-70">לחיצה תודיע לכולם שוויתרת</p>
-                              </div>
-                          ) : (
-                              // --- תצוגה לשאר השחקנים (הצבעות) ---
-                              <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-xl w-full">
-                                  <h2 className="text-xl font-bold mb-6 text-gray-300">הצביעו לביצוע:</h2>
-                                  <div className="grid grid-cols-2 gap-4 mb-4">
-                                      <button onClick={() => sendAction('vote_like')} className="bg-green-600 p-5 rounded-xl flex flex-col items-center gap-2 active:bg-green-700 transition-all hover:scale-105 border-b-4 border-green-800 shadow-lg">
-                                          <ThumbsUp size={36} />
-                                          <span className="font-black text-lg">הושלם!</span>
-                                      </button>
-                                      <button onClick={() => sendAction('vote_dislike')} className="bg-red-600 p-5 rounded-xl flex flex-col items-center gap-2 active:bg-red-700 transition-all hover:scale-105 border-b-4 border-red-800 shadow-lg">
-                                          <ThumbsDown size={36} />
-                                          <span className="font-black text-lg">חלש...</span>
-                                      </button>
+                  {isMyTurn && (status === 'challenge' || status === 'revealing') && (
+                      <div className="w-full max-w-sm space-y-6">
+                           <div className="bg-gray-800 p-6 rounded-2xl border-2 border-pink-500 shadow-xl">
+                               <h2 className="text-2xl font-black mb-2 text-pink-400">המשימה שלך!</h2>
+                               <p className="text-lg leading-relaxed">
+                                   {gameState?.challenge_text || "טוען משימה..."}
+                               </p>
+                           </div>
+
+                           <div className="grid grid-cols-2 gap-4">
+                               <button onClick={handleSkip} className="bg-red-900/50 border border-red-500 text-red-200 py-4 rounded-xl font-bold flex flex-col items-center justify-center gap-1 active:scale-95">
+                                   <XCircle /> אני מוותר (שוט)
+                               </button>
+                               <button onClick={handleDone} className="bg-green-600 text-white py-4 rounded-xl font-bold flex flex-col items-center justify-center gap-1 active:scale-95 shadow-lg">
+                                   <ThumbsUp /> ביצעתי!
+                               </button>
+                           </div>
+                      </div>
+                  )}
+
+                  {/* --- תצוגה לשאר השחקנים --- */}
+                  {!isMyTurn && (
+                      <div className="text-center w-full">
+                          {status === 'lobby' && <div className="text-gray-500 animate-pulse">ממתינים ל-{gameState.heat_level ? 'סיבוב' : 'מארח'}...</div>}
+                          {status === 'spinning' && <div className="text-6xl animate-spin">🎲</div>}
+                          {status === 'challenge' && (
+                              <div className="space-y-4">
+                                  <h3 className="font-bold text-gray-400">הצבע לביצוע:</h3>
+                                  <div className="flex justify-center gap-4">
+                                      <button onClick={() => sendAction('vote_like')} className="p-4 bg-gray-800 rounded-full text-green-500 border border-green-500/30 active:scale-90"><ThumbsUp size={32}/></button>
+                                      <button onClick={() => sendAction('vote_dislike')} className="p-4 bg-gray-800 rounded-full text-red-500 border border-red-500/30 active:scale-90"><ThumbsDown size={32}/></button>
+                                      <button onClick={() => sendAction('vote_shot')} className="p-4 bg-gray-800 rounded-full text-yellow-500 border border-yellow-500/30 active:scale-90"><Beer size={32}/></button>
                                   </div>
-                                  <button onClick={() => sendAction('vote_shot')} className="w-full mt-2 bg-gradient-to-r from-orange-600 to-red-600 p-4 rounded-xl flex items-center justify-center gap-3 font-black text-lg active:scale-95 transition-all shadow-lg border border-orange-400/30">
-                                      <Beer size={24} /> שכולם ישתו!
-                                  </button>
                               </div>
                           )}
                       </div>
                   )}
               </div>
 
-              {/* Emoji Bar - זמין תמיד לכולם */}
-              <div className="w-full mt-auto pt-4 border-t border-gray-800/50">
-                  <p className="text-center text-xs text-gray-500 mb-2 font-bold uppercase tracking-widest">שלח תגובה למסך</p>
-                  <div className="flex justify-between gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                      {[
-                          { icon: '😂', label: 'צחוק' },
-                          { icon: '😱', label: 'שוק' },
-                          { icon: '😍', label: 'לב' },
-                          { icon: '🤢', label: 'איכס' },
-                          { icon: '😈', label: 'פלירטוט' },
-                          { icon: '🫣', label: 'מביך' }
-                      ].map((item, idx) => (
+              {/* Footer / Emoji Bar - Always Visible */}
+              <div className="w-full bg-gray-900/90 backdrop-blur border-t border-gray-800 p-4 pb-safe-bottom z-20">
+                  <div className="flex justify-between gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                      {['😂','😱','😍','🤢','😈','🫣','🔥','💩'].map((emoji, idx) => (
                           <button 
                             key={idx}
-                            onClick={() => sendAction('emoji', item.icon)}
-                            className="bg-gray-800 p-3 rounded-2xl text-3xl hover:bg-gray-700 active:scale-90 transition-transform shadow-md border border-gray-700 flex-shrink-0"
+                            onClick={() => sendAction('emoji', emoji)}
+                            className="flex-shrink-0 w-12 h-12 bg-gray-800 rounded-xl text-2xl flex items-center justify-center shadow active:scale-90 transition-transform"
                           >
-                              {item.icon}
+                              {emoji}
                           </button>
                       ))}
                   </div>
@@ -236,43 +276,47 @@ function GameController() {
       );
   }
 
-  // --- תצוגת הרשמה (ברירת מחדל) ---
-  if (!hostId) return <div className="text-white p-10 text-center flex flex-col items-center justify-center h-screen"><AlertTriangle size={48} className="text-red-500 mb-4"/>קוד משחק שגוי</div>;
+  // --- תצוגת הרשמה (Login) ---
+  if (!hostId) return <div className="flex items-center justify-center h-screen text-white bg-black"><AlertTriangle className="mr-2 text-red-500"/> שגיאה בקוד החדר</div>;
 
   return (
-    <div className="w-full max-w-md space-y-8 pb-10" dir="rtl">
-        <div className="flex justify-center">
-          <div className="relative">
-            <label htmlFor="avatar-upload" className="cursor-pointer group">
-              <motion.div whileHover={{ scale: 1.05 }} className={`w-32 h-32 rounded-full border-4 border-dashed flex items-center justify-center overflow-hidden transition-colors ${imagePreview ? 'border-pink-500' : 'border-gray-600'}`}>
-                {imagePreview ? <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" /> : <Camera className="text-gray-500" size={32} />}
-              </motion.div>
-            </label>
-            <input id="avatar-upload" type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-          </div>
-        </div>
+    <div className="min-h-screen bg-black text-white p-6 flex flex-col items-center justify-center" dir="rtl">
+        <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500 mb-8">הצטרפות למשחק</h1>
+        
+        <div className="w-full max-w-xs space-y-6">
+            <div className="flex justify-center">
+                <label className="relative cursor-pointer">
+                    <div className={`w-32 h-32 rounded-full border-4 border-dashed flex items-center justify-center overflow-hidden bg-gray-900 ${imagePreview ? 'border-pink-500' : 'border-gray-700'}`}>
+                        {imagePreview ? <img src={imagePreview} className="w-full h-full object-cover" /> : <Camera className="text-gray-500" size={32} />}
+                    </div>
+                    <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                </label>
+            </div>
 
-        <div className="space-y-2">
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="הכינוי שלך" className="w-full bg-gray-900 border border-gray-700 rounded-xl p-4 text-white text-right focus:border-pink-500 outline-none transition-colors" />
-        </div>
+            <input 
+                type="text" value={name} onChange={(e) => setName(e.target.value)} 
+                placeholder="הכינוי שלך" 
+                className="w-full bg-gray-900 border border-gray-700 rounded-xl p-4 text-center focus:border-pink-500 outline-none" 
+            />
 
-        <div className="grid grid-cols-3 gap-3">
-            {[ { id: "male", label: "גבר" }, { id: "female", label: "אישה" }, { id: "other", label: "אחר" } ].map((option) => (
-              <button key={option.id} onClick={() => setGender(option.id as any)} className={`p-3 rounded-xl border font-bold transition-all ${gender === option.id ? 'bg-pink-600 border-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.4)]' : 'bg-gray-900 border-gray-800 text-gray-500'}`}>{option.label}</button>
-            ))}
-        </div>
+            <div className="grid grid-cols-3 gap-2">
+                {[ { id: "male", label: "גבר" }, { id: "female", label: "אישה" }, { id: "other", label: "אחר" } ].map((opt) => (
+                    <button key={opt.id} onClick={() => setGender(opt.id as any)} className={`p-3 rounded-xl border text-sm font-bold ${gender === opt.id ? 'bg-pink-600 border-pink-500' : 'bg-gray-900 border-gray-800'}`}>{opt.label}</button>
+                ))}
+            </div>
 
-        <button onClick={handleJoin} disabled={loading} className="w-full bg-gradient-to-l from-pink-600 via-purple-600 to-indigo-600 p-5 rounded-2xl font-black text-xl text-white shadow-lg flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:scale-100">
-          {loading ? <Loader2 className="animate-spin" /> : <>הצטרף למשחק <ArrowLeft /></>}
-        </button>
+            <button onClick={handleJoin} disabled={loading} className="w-full bg-white text-black py-4 rounded-xl font-black text-lg shadow-lg active:scale-95 disabled:opacity-50">
+                {loading ? <Loader2 className="animate-spin mx-auto"/> : "יאללה פנימה!"}
+            </button>
+        </div>
     </div>
   );
 }
 
 export default function PlayerJoinPage() {
     return (
-        <div className="min-h-screen bg-black text-white p-6 flex flex-col items-center overflow-y-auto" dir="rtl">
-            <Suspense fallback={<div className="text-white text-center mt-20">טוען משחק...</div>}><GameController /></Suspense>
-        </div>
+        <Suspense fallback={<div className="bg-black h-screen text-white flex items-center justify-center">טוען...</div>}>
+            <GameController />
+        </Suspense>
     );
 }
