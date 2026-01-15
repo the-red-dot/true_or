@@ -9,7 +9,7 @@ import { useSearchParams } from "next/navigation";
 
 // --- סוגי אירועים לשידור ---
 type GameEvent = {
-  type: 'emoji' | 'action_skip' | 'vote_like' | 'vote_dislike' | 'vote_shot' | 'trigger_spin' | 'update_heat' | 'player_left';
+  type: 'emoji' | 'action_skip' | 'vote_like' | 'vote_dislike' | 'vote_shot' | 'trigger_spin' | 'update_heat';
   payload: any;
   playerId: string;
 };
@@ -35,7 +35,7 @@ function GameController() {
   
   // Game Logic State
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
-  const [gameState, setGameState] = useState<any>(null); 
+  const [gameState, setGameState] = useState<any>(null);
   const [localHeat, setLocalHeat] = useState(1);
 
   // בדיקה אם השחקן כבר רשום (localStorage)
@@ -55,17 +55,17 @@ function GameController() {
 
       // קריאה ראשונית
       supabase.from('game_states').select('*').eq('host_id', hostId).single()
-        .then(({ data }) => { 
+        .then(({ data }) => {
             if (data) {
                 setGameState(data);
                 if (data.heat_level) setLocalHeat(data.heat_level);
-            } 
+            }
         });
 
       // האזנה לשינויים
       const channel = supabase
         .channel(`gamestate_listener_${hostId}`)
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_states', filter: `host_id=eq.${hostId}` }, 
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_states', filter: `host_id=eq.${hostId}` },
         (payload) => {
             setGameState(payload.new);
             // עדכון חום מקומי רק אם השתנה בטלוויזיה
@@ -80,6 +80,8 @@ function GameController() {
 
   const sendAction = async (type: GameEvent['type'], payload: any = {}) => {
       if (!hostId || !myPlayerId) return;
+      // שימוש ב-track כדי לשלוח את האירוע, או בשיטת Broadcast הרגילה
+      // נוודא שאנחנו שולחים לחדר הנכון
       await supabase.channel(`room_${hostId}`).send({
           type: 'broadcast',
           event: 'game_event',
@@ -96,17 +98,15 @@ function GameController() {
       sendAction('trigger_spin');
   };
 
-  // פונקציית התנתקות - שולחת בקשה לטלוויזיה למחוק אותי
+  // פונקציית התנתקות
   const handleLeaveGame = async () => {
       if(confirm("האם אתה בטוח שברצונך לצאת מהמשחק?")) {
           if (myPlayerId) {
-              // שליחת בקשת יציאה לטלוויזיה
-              await sendAction('player_left');
-              
-              // ניקוי מקומי
+              await supabase.from('players').delete().eq('id', myPlayerId);
               localStorage.removeItem(`player_id_${hostId}`);
               setMyPlayerId(null);
               setIsSubmitted(false);
+              window.location.reload();
           }
       }
   };
@@ -161,11 +161,13 @@ function GameController() {
 
   // --- CONTROLLER VIEW ---
   if (isSubmitted && myPlayerId) {
+      // בדיקה אם אני השחקן הפעיל כרגע (מי שעושה את המשימה)
       const isMyTurnToPlay = gameState?.current_player_id === myPlayerId;
-      // אם זה המצב 'waiting_for_spin' ואני השחקן האחרון שהיה פעיל - אני מסובב
-      // או אם זה הלובי ועדיין אין שחקן פעיל אחרון (תחילת משחק) -> השחקן הזה מסומן ב-DB ע"י הטלוויזיה
-      const isMyTurnToSpin = (gameState?.status === 'waiting_for_spin' && gameState?.last_active_player_id === myPlayerId) 
-                             || (gameState?.status === 'lobby' && gameState?.last_active_player_id === myPlayerId);
+      
+      // בדיקה אם אני שולט בשרביט (מסובב את הגלגל)
+      // הפעם אנחנו סומכים ב-100% על מה שהטלוויזיה אומרת ב-DB
+      const isMyTurnToSpin = gameState?.last_active_player_id === myPlayerId && 
+                             (gameState?.status === 'lobby' || gameState?.status === 'waiting_for_spin');
 
       return (
           <div className="fixed inset-0 bg-gray-900 text-white flex flex-col overflow-hidden" dir="rtl">
@@ -184,7 +186,7 @@ function GameController() {
               {/* Main Content */}
               <div className="flex-1 flex flex-col justify-center items-center p-6 relative w-full max-w-md mx-auto overflow-y-auto">
                   
-                  {/* --- SPIN CONTROLS --- */}
+                  {/* --- SPIN CONTROLS (Only for the Wand Holder) --- */}
                   {isMyTurnToSpin ? (
                       <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full space-y-6">
                           <div className="text-center">
@@ -199,7 +201,7 @@ function GameController() {
                                   <span className="flex items-center gap-2 font-bold text-xl text-orange-400"><Flame className="fill-orange-400" /> {localHeat}</span>
                                   <span className="text-xs text-gray-400 uppercase tracking-widest">{localHeat < 4 ? "קליל" : localHeat < 8 ? "לוהט" : "אקסטרים"}</span>
                               </div>
-                              <input 
+                              <input
                                 type="range" min="1" max="10" step="1"
                                 value={localHeat}
                                 onChange={(e) => handleHeatChange(parseInt(e.target.value))}
@@ -215,7 +217,7 @@ function GameController() {
                       /* --- NOT SPINNING (Spectator or Active Player) --- */
                       <div className="w-full space-y-6">
                           
-                          {/* Active Player Controls */}
+                          {/* Active Player Controls (The one doing the challenge) */}
                           {isMyTurnToPlay && gameState?.status === 'challenge' && (
                               <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full">
                                   <div className="bg-gray-800/90 p-6 rounded-3xl border-2 border-pink-500 shadow-2xl mb-4 text-center">
@@ -230,25 +232,26 @@ function GameController() {
                               </motion.div>
                           )}
 
-                          {/* Spectator View */}
+                          {/* Spectator View (Voting Buttons) - Everyone sees this except the active player */}
                           {!isMyTurnToPlay && gameState?.status === 'challenge' && (
                               <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-700">
                                   <h3 className="text-center font-bold mb-4 text-gray-300">מה דעתך על הביצוע?</h3>
                                   <div className="grid grid-cols-2 gap-3">
-                                      <button onClick={() => sendAction('vote_like')} className="bg-green-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl">👍</button>
-                                      <button onClick={() => sendAction('vote_dislike')} className="bg-red-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl">👎</button>
+                                      <button onClick={() => sendAction('vote_like')} className="bg-green-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-green-500 transition-colors">👍</button>
+                                      <button onClick={() => sendAction('vote_dislike')} className="bg-red-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-red-500 transition-colors">👎</button>
                                   </div>
-                                  <button onClick={() => sendAction('vote_shot')} className="w-full mt-3 bg-orange-600/80 p-3 rounded-xl font-bold flex justify-center items-center gap-2 active:scale-95"><Beer size={18}/> כולם שותים!</button>
+                                  <button onClick={() => sendAction('vote_shot')} className="w-full mt-3 bg-orange-600/80 p-3 rounded-xl font-bold flex justify-center items-center gap-2 active:scale-95 hover:bg-orange-500 transition-colors"><Beer size={18}/> כולם שותים!</button>
                               </div>
                           )}
 
-                          {/* Status Messages */}
-                          {!isMyTurnToPlay && gameState?.status !== 'challenge' && (
+                          {/* Status Messages (Waiting states) */}
+                          {gameState?.status !== 'challenge' && (
                               <div className="text-center text-gray-400 animate-pulse">
                                   {gameState?.status === 'spinning' && <div className="text-6xl animate-spin mb-4">🎲</div>}
                                   <p className="text-xl font-bold">
-                                      {gameState?.status === 'lobby' ? "ממתינים למארח..." : 
-                                       gameState?.status === 'spinning' ? "מגריל..." : 
+                                      {gameState?.status === 'lobby' ? "ממתינים למארח..." :
+                                       gameState?.status === 'waiting_for_spin' ? "ממתינים לסיבוב..." :
+                                       gameState?.status === 'spinning' ? "מגריל..." :
                                        gameState?.status === 'penalty' ? "שוט!" :
                                        "המשחק רץ בטלוויזיה..."}
                                   </p>
@@ -258,12 +261,12 @@ function GameController() {
                   )}
               </div>
 
-              {/* Emoji Bar */}
+              {/* Emoji Bar (Available to EVERYONE) */}
               <div className="w-full pt-3 pb-6 bg-gray-900 border-t border-gray-800 z-10">
                   <p className="text-center text-[10px] text-gray-500 mb-2 font-bold uppercase tracking-widest">תגובה מהירה</p>
                   <div className="flex justify-between gap-2 overflow-x-auto pb-2 scrollbar-hide px-2">
                       {[{ icon: '😂' }, { icon: '😱' }, { icon: '😍' }, { icon: '🤢' }, { icon: '😈' }, { icon: '🫣' }, { icon: '🔥' }].map((item, idx) => (
-                          <button key={idx} onClick={() => sendAction('emoji', item.icon)} className="bg-gray-800 p-3 rounded-2xl text-2xl active:scale-75 transition-transform shadow-md border border-gray-700 flex-shrink-0">{item.icon}</button>
+                          <button key={idx} onClick={() => sendAction('emoji', item.icon)} className="bg-gray-800 p-3 rounded-2xl text-2xl active:scale-75 transition-transform shadow-md border border-gray-700 flex-shrink-0 hover:bg-gray-700">{item.icon}</button>
                       ))}
                   </div>
               </div>
