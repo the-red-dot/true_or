@@ -64,21 +64,29 @@ export default function TruthOrDareGame() {
   const [votes, setVotes] = useState<{likes: number, dislikes: number, shots: number}>({likes: 0, dislikes: 0, shots: 0});
   const [shotVoteMode, setShotVoteMode] = useState(false);
 
+  // --- ניהול תורות אוטומטי (שחקן ראשון מקבל שליטה) ---
+  useEffect(() => {
+    // אם אנחנו בלובי או מחכים לספין, ואין שחקן פעיל (או שהשחקן הפעיל עזב)
+    // נעביר את השרביט לשחקן הראשון ברשימה
+    if ((gameState === 'lobby' || gameState === 'waiting_for_spin') && players.length > 0) {
+        const currentPlayerExists = players.find(p => p.id === lastActivePlayer?.id);
+        
+        if (!lastActivePlayer || !currentPlayerExists) {
+            // ברירת מחדל: השחקן הראשון ברשימה מקבל את השליטה
+            setLastActivePlayer(players[0]);
+        }
+    }
+  }, [players, gameState, lastActivePlayer]);
+
   // --- Sync Game State to DB ---
   const syncGameStateToDB = async (status: string, currentPlayerId: string | null = null, challenge: any = null) => {
       if (!authUser) return;
       
-      // בלובי, השחקן הראשון (players[0]) הוא זה שמקבל את השליטה להתחיל
-      let activeControllerId = lastActivePlayer?.id;
-      if (status === 'lobby' && players.length > 0) {
-          activeControllerId = players[0].id;
-      }
-
       await supabase.from('game_states').upsert({
           host_id: authUser.id,
           status: status,
           current_player_id: currentPlayerId,
-          last_active_player_id: activeControllerId, // סנכרון מי השולט בטלפון
+          last_active_player_id: lastActivePlayer?.id, // הטלפון ידע שזה הוא לפי ה-ID הזה
           heat_level: heatLevel,
           challenge_text: challenge?.content || null,
           challenge_type: challengeType,
@@ -91,16 +99,25 @@ export default function TruthOrDareGame() {
       if (gameState !== 'challenge') {
           setVotes({likes: 0, dislikes: 0, shots: 0});
       }
-  }, [gameState, selectedPlayer, currentChallenge, heatLevel, lastActivePlayer, players]); 
+  }, [gameState, selectedPlayer, currentChallenge, heatLevel, lastActivePlayer]);
+
+  // וודא ש-URL קיים תמיד כשיש משתמש
+  useEffect(() => {
+    if (authUser && typeof window !== "undefined") {
+       setJoinUrl(`${window.location.origin}/join?hostId=${authUser.id}`);
+    }
+  }, [authUser]);
 
   // --- Realtime Listeners ---
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
 
     const setupRealtime = async (userId: string) => {
+        // טעינה ראשונית
         const { data } = await supabase.from('players').select('*').eq('host_id', userId).order('created_at', { ascending: true });
         if (data) setPlayers(data as Player[]);
 
+        // האזנה לשינויים
         channel = supabase.channel(`room_${userId}`)
           .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'players', filter: `host_id=eq.${userId}` }, 
              (payload) => setPlayers(prev => [...prev, payload.new as Player]))
@@ -116,7 +133,7 @@ export default function TruthOrDareGame() {
         if (type === 'emoji') {
             const id = Math.random().toString(36);
             setReactions(prev => [...prev, { id, emoji: payload, playerId }]);
-            setTimeout(() => setReactions(prev => prev.filter(r => r.id !== id)), 2000);
+            setTimeout(() => setReactions(prev => prev.filter(r => r.id !== id)), 3000);
         }
         if (type === 'update_heat') setHeatLevel(payload);
         if (type === 'trigger_spin') spinTheWheel(); 
@@ -126,6 +143,7 @@ export default function TruthOrDareGame() {
         if (type === 'vote_shot') {
              setVotes(v => {
                  const newShots = v.shots + 1;
+                 // אם 40% מהשחקנים הצביעו שוט
                  if (newShots > Math.max(1, players.length * 0.4)) triggerGroupShot();
                  return { ...v, shots: newShots };
              });
@@ -135,9 +153,6 @@ export default function TruthOrDareGame() {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
         if (session?.user) {
             setAuthUser(session.user);
-            if (typeof window !== "undefined") {
-                setJoinUrl(`${window.location.origin}/join?hostId=${session.user.id}`);
-            }
             setupRealtime(session.user.id);
         } else {
             setAuthUser(null);
@@ -148,9 +163,9 @@ export default function TruthOrDareGame() {
     });
 
     return () => { authListener.subscription.unsubscribe(); if (channel) supabase.removeChannel(channel); };
-  }, [players.length]); 
+  }, [players.length]); // תלות ב-players חשובה לחישובי רוב
 
-  // הצבעות אוטומטיות
+  // הצבעות אוטומטיות (50% לכל כיוון)
   useEffect(() => {
       if (gameState !== 'challenge') return;
       const voters = Math.max(1, players.length - 1);
@@ -183,7 +198,8 @@ export default function TruthOrDareGame() {
   useEffect(() => {
     if (gameState === "revealing" && selectedPlayer && challengeType && authUser) {
       setLoadingAI(true);
-      const prevTasks: string[] = []; 
+      // קריאה ל-API (שכרגע שולף מה-DB)
+      const prevTasks: string[] = []; // אפשר לשלוף היסטוריה אם רוצים
       
       fetch("/api/generate", {
             method: "POST",
@@ -207,6 +223,8 @@ export default function TruthOrDareGame() {
 
   const handleDone = () => {
     confetti({ particleCount: 200, spread: 120 });
+    
+    // העברת השרביט לשחקן שביצע
     setLastActivePlayer(selectedPlayer);
     
     setTimeout(() => {
@@ -216,10 +234,12 @@ export default function TruthOrDareGame() {
   };
 
   const handleSkip = () => {
-    setGameState("penalty");
+    setGameState("penalty"); // מסך שוט
     playShotSound();
     
+    // לוגיקה אוטומטית: אחרי 5 שניות ממשיכים
     setTimeout(() => {
+        // גם אם דילג, הוא מקבל את השרביט כדי לסובב את הגלגל לאחרים
         setLastActivePlayer(selectedPlayer); 
         setGameState("waiting_for_spin");
         setSelectedPlayer(null);
@@ -288,7 +308,7 @@ export default function TruthOrDareGame() {
       {/* --- Main Game Area --- */}
       <div className="flex-1 flex flex-col items-center justify-center relative z-10 p-10 h-full">
           
-          {/* מצב מנותק */}
+          {/* מצב מנותק - כפתור התחברות */}
           {!authUser && (
               <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex flex-col items-center text-center space-y-8 p-10 bg-white/5 rounded-3xl border border-white/10 backdrop-blur-xl">
                   <div className="bg-pink-600/20 p-6 rounded-full">
@@ -313,11 +333,10 @@ export default function TruthOrDareGame() {
                     {players.length === 0 && (
                         <div className="text-2xl text-gray-500 animate-pulse">ממתין לשחקנים... סרקו את הקוד</div>
                     )}
-                    {players.map((p, index) => {
+                    {players.map((p) => {
                         const playerReactions = reactions.filter(r => r.playerId === p.id);
-                        const isFirstPlayer = gameState === 'lobby' && index === 0;
-                        const isLastActive = gameState === 'waiting_for_spin' && lastActivePlayer?.id === p.id;
-                        const isController = isFirstPlayer || isLastActive;
+                        // בדיקה מי השחקן השולט: או שזה השחקן האחרון, או שזה השחקן הראשון בלובי
+                        const isController = lastActivePlayer?.id === p.id;
 
                         return (
                             <div key={p.id} className="relative group">
@@ -327,7 +346,7 @@ export default function TruthOrDareGame() {
                                             key={r.id}
                                             initial={{ opacity: 0, scale: 0, y: 0 }}
                                             animate={{ opacity: 1, scale: 1.5, y: -100 }}
-                                            exit={{ opacity: 0, scale: 0, y: -120 }}
+                                            exit={{ opacity: 0, scale: 0.5, y: -120 }}
                                             transition={{ duration: 1.5 }}
                                             className="absolute -top-10 left-1/2 -translate-x-1/2 text-5xl z-50 pointer-events-none drop-shadow-2xl"
                                         >
@@ -341,7 +360,7 @@ export default function TruthOrDareGame() {
                                     {isController && <div className="absolute inset-0 bg-black/30 flex items-center justify-center"><RefreshCw className="text-white w-10 h-10 animate-spin-slow" /></div>}
                                 </div>
                                 <div className="text-center mt-2 font-bold text-lg drop-shadow-md">{p.name}</div>
-                                {isController && <div className="text-center text-yellow-400 text-xs font-bold animate-pulse">{gameState === 'lobby' ? 'מתחיל...' : 'מסובב...'}</div>}
+                                {isController && <div className="text-center text-yellow-400 text-xs font-bold animate-pulse">מחזיק בשרביט</div>}
                             </div>
                         );
                     })}
@@ -353,7 +372,6 @@ export default function TruthOrDareGame() {
                     <input type="range" min="1" max="10" value={heatLevel} onChange={handleHeatChange} className="w-32 accent-pink-500" />
                     <button onClick={resetGame} className="p-2 hover:bg-red-900/50 rounded-lg text-red-400" title="איפוס משחק"><Trash2 size={20}/></button>
                 </div>
-
             </div>
           )}
 
@@ -416,15 +434,7 @@ export default function TruthOrDareGame() {
                               <div key={p.id} className="relative w-20 h-20 rounded-full border-2 border-white/20 opacity-70">
                                   <AnimatePresence>
                                     {playerReactions.map(r => (
-                                        <motion.div 
-                                            key={r.id} 
-                                            initial={{ opacity: 0, scale: 0, y: 0 }} 
-                                            animate={{ opacity: 1, scale: 1.5, y: -100 }} 
-                                            exit={{ opacity: 0, scale: 0 }} 
-                                            transition={{ duration: 1.5 }}
-                                            className="absolute -top-4 left-1/2 -translate-x-1/2 text-4xl z-50">
-                                                {r.emoji}
-                                        </motion.div>
+                                        <motion.div key={r.id} initial={{ opacity: 0, scale: 0, y: 0 }} animate={{ opacity: 1, scale: 1, y: -80 }} exit={{ opacity: 0, scale: 0.5 }} className="absolute -top-4 left-1/2 -translate-x-1/2 text-4xl z-50">{r.emoji}</motion.div>
                                     ))}
                                   </AnimatePresence>
                                   {p.avatar.startsWith('bg-') ? <div className={`w-full h-full ${p.avatar}`} /> : <img src={p.avatar} className="w-full h-full object-cover rounded-full" />}
@@ -437,16 +447,10 @@ export default function TruthOrDareGame() {
 
           {/* PENALTY */}
           {gameState === 'penalty' && (
-              <motion.div 
-                className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-red-900/90"
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              >
-                  <motion.div animate={{ rotate: [-5, 5, -5] }} transition={{ repeat: Infinity, duration: 0.2 }}>
-                      <Beer size={150} className="text-yellow-400 drop-shadow-2xl mb-8" />
-                  </motion.div>
-                  <h1 className="text-9xl font-black uppercase mb-4 animate-bounce text-white drop-shadow-[0_10px_0_rgba(0,0,0,0.5)]">SHOT!</h1>
-                  <p className="text-5xl font-bold text-red-200">{selectedPlayer?.name} ויתר/ה...</p>
-                  <p className="text-xl mt-12 animate-pulse text-white/50 font-mono">המשחק ימשיך מיד...</p>
+              <motion.div className="bg-red-600/90 absolute inset-0 z-50 flex flex-col items-center justify-center">
+                  <h1 className="text-9xl font-black uppercase mb-8 animate-bounce">SHOT!</h1>
+                  <p className="text-4xl font-bold text-red-100">{selectedPlayer?.name} ויתר/ה...</p>
+                  <p className="text-xl mt-8 animate-pulse">המשחק ממשיך עוד 5 שניות...</p>
               </motion.div>
           )}
 
@@ -460,12 +464,17 @@ export default function TruthOrDareGame() {
             )}
           </AnimatePresence>
           
-          {/* Always Show QR if Joined (Small Corner) */}
-           {authUser && joinUrl && gameState !== 'lobby' && (
-               <div className="absolute bottom-6 right-6 z-40 bg-white p-2 rounded-lg opacity-80 hover:opacity-100 transition-opacity scale-75 origin-bottom-right">
-                   <QRCode value={joinUrl} size={80} />
+          {/* Always Show QR if Joined (Fixed Corner) - קוד QR קבוע */}
+          {authUser && joinUrl && (
+               <div className={`absolute z-40 transition-all duration-500 bg-white p-2 rounded-xl shadow-2xl ${
+                   gameState === 'lobby' || gameState === 'waiting_for_spin'
+                     ? 'bottom-20 right-10 scale-125 rotate-3 hover:rotate-0' 
+                     : 'bottom-6 right-6 scale-75 opacity-70 hover:opacity-100'
+               }`}>
+                   <QRCode value={joinUrl} size={gameState === 'lobby' ? 120 : 100} />
+                   {(gameState === 'lobby' || gameState === 'waiting_for_spin') && <p className="text-black text-[10px] font-black text-center mt-1 uppercase tracking-widest">סרוק להצטרפות</p>}
                </div>
-           )}
+          )}
 
       </div>
     </main>
