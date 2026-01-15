@@ -9,7 +9,7 @@ import { useSearchParams } from "next/navigation";
 
 // --- סוגי אירועים לשידור ---
 type GameEvent = {
-  type: 'emoji' | 'action_skip' | 'vote_like' | 'vote_dislike' | 'vote_shot' | 'trigger_spin' | 'update_heat';
+  type: 'emoji' | 'action_skip' | 'vote_like' | 'vote_dislike' | 'vote_shot' | 'trigger_spin' | 'update_heat' | 'player_left';
   payload: any;
   playerId: string;
 };
@@ -127,10 +127,14 @@ function GameController() {
       sendAction('trigger_spin');
   };
 
-  // פונקציית התנתקות יזומה
+  // פונקציית התנתקות יזומה - שולחת אירוע "עזבתי" לטלוויזיה לעדכון מיידי
   const handleLeaveGame = async () => {
       if(confirm("האם אתה בטוח שברצונך לצאת מהמשחק?")) {
           if (myPlayerId) {
+              // שלח עדכון מיידי לטלוויזיה כדי שהאווטר יעלם מיד
+              await sendAction('player_left');
+              
+              // ואז מחק מהדאטה בייס
               await supabase.from('players').delete().eq('id', myPlayerId);
               // ה-listener כבר יתפוס את המחיקה ויבצע handleKicked
           }
