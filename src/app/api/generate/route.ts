@@ -31,34 +31,39 @@ export async function POST(req: Request) {
 
     if (error) {
       console.error("Supabase Error:", error);
-      throw new Error("Failed to fetch tasks");
+      // Fallback מקומי למקרה חירום
+      return NextResponse.json({
+          content: `משימת גיבוי (${type}): ספר פדיחה שקרתה לך לאחרונה!`,
+          spiciness: heatLevel,
+          themeColor: "#FF00FF",
+          usedModel: "Backup (DB Error)"
+      });
     }
 
     if (!tasks || tasks.length === 0) {
-        // Fallback למקרה שאין משימות מתאימות
         return NextResponse.json({
-            content: `המערכת לא מצאה משימה לרמה ${heatLevel}... אז פשוט תעשו שוט לחיים! 🥂`,
+            content: `לא מצאתי משימה לרמה ${heatLevel}... אז כולם עושים שוט לחיים! 🥂`,
             spiciness: heatLevel,
             themeColor: "#FF0000",
-            usedModel: "Database (Fallback)"
+            usedModel: "Database (Empty)"
         });
     }
 
     // סינון משימות שכבר היו
-    const availableTasks = tasks.filter(t => 
-        !previousChallenges?.some((prev: string) => prev === t.content)
+    const availableTasks = tasks.filter((t: any) => 
+        !previousChallenges.some((prev: string) => prev === t.content)
     );
 
-    // אם סיימנו את כל המשימות האפשריות, נאפס ונבחר מכל המאגר
+    // אם סיימנו את כל המשימות, נאפס ונבחר מכל המאגר
     const finalPool = availableTasks.length > 0 ? availableTasks : tasks;
 
-    // בחירה רנדומלית מתוך המאגר המסונן
+    // בחירה רנדומלית
     const randomTask = finalPool[Math.floor(Math.random() * finalPool.length)];
 
     return NextResponse.json({
       content: randomTask.content,
       spiciness: randomTask.heat_level,
-      themeColor: randomTask.theme_color,
+      themeColor: randomTask.theme_color || '#ec4899',
       usedModel: "Supabase DB"
     });
 
@@ -66,7 +71,7 @@ export async function POST(req: Request) {
     console.error("Critical API Error:", error);
     return NextResponse.json(
       { 
-          content: "שגיאה בתקשורת עם מאגר המשימות. מישהו פה שתה יותר מדי...", 
+          content: "תקלה בתקשורת... תעשה שוט!", 
           spiciness: 1, 
           themeColor: "#FF0000",
           usedModel: "Error"
