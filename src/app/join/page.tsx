@@ -1,4 +1,5 @@
 // truth-or-dare-ai\src\app\join\page.tsx
+
 "use client";
 
 import React, { useState, useEffect, Suspense, useRef } from "react";
@@ -127,16 +128,18 @@ function GameController() {
       sendAction('trigger_spin');
   };
 
-  // פונקציית התנתקות יזומה - שולחת אירוע "עזבתי" לטלוויזיה לעדכון מיידי
+  // פונקציית התנתקות יזומה - שולחת אירוע "עזבתי" לטלוויזיה ומבצעת יציאה מקומית מיידית
   const handleLeaveGame = async () => {
       if(confirm("האם אתה בטוח שברצונך לצאת מהמשחק?")) {
           if (myPlayerId) {
-              // שלח עדכון מיידי לטלוויזיה כדי שהאווטר יעלם מיד
+              // 1. שלח עדכון מיידי לטלוויזיה כדי שהאווטר יעלם
               await sendAction('player_left');
               
-              // ואז מחק מהדאטה בייס
+              // 2. נסה למחוק מהדאטה בייס (אבל אל תחכה לזה כדי להתנתק מקומית)
               await supabase.from('players').delete().eq('id', myPlayerId);
-              // ה-listener כבר יתפוס את המחיקה ויבצע handleKicked
+              
+              // 3. בצע יציאה מקומית מיידית - אל תחכה לכלום
+              handleKicked();
           }
       }
   };

@@ -65,7 +65,6 @@ export default function TruthOrDareGame() {
   const [shotVoteMode, setShotVoteMode] = useState(false);
 
   // שמירת רפרנס לסטייט כדי להשתמש בתוך ה-Listener של ה-Realtime בלי stale closures
-  // זה קריטי לתיקון הבאג של "צריך 2 שחקנים"
   const stateRef = useRef({ players, lastActivePlayer, gameState });
   useEffect(() => {
       stateRef.current = { players, lastActivePlayer, gameState };
@@ -238,8 +237,7 @@ export default function TruthOrDareGame() {
   // --- Game Flow ---
 
   const spinTheWheel = () => {
-    // BUG FIX: שימוש ב-Ref כדי לקבל את מספר השחקנים העדכני
-    // זה פותר את הבעיה שהטלוויזיה "חשבה" שיש 0 שחקנים
+    // שימוש ב-Ref כדי לקבל את מספר השחקנים העדכני
     const currentPlayers = stateRef.current.players;
     
     if (currentPlayers.length < 2) return alert("צריך לפחות 2 שחקנים כדי להתחיל!");
@@ -248,7 +246,6 @@ export default function TruthOrDareGame() {
     playSpinSound();
     
     setTimeout(() => {
-      // משתמשים ב-currentPlayers העדכני
       const randomPlayer = currentPlayers[Math.floor(Math.random() * currentPlayers.length)];
       setSelectedPlayer(randomPlayer);
       setChallengeType(Math.random() > 0.5 ? "אמת" : "חובה");
@@ -336,13 +333,19 @@ export default function TruthOrDareGame() {
       }
   };
  
+  // פונקציית האיפוס המתוקנת
   const resetGame = async (askConfirm = true) => {
     if (!authUser) return;
     if (askConfirm && !confirm("בטוח שאתה רוצה לאפס את המשחק ולמחוק את כל השחקנים?")) return;
 
-    await supabase.from('players').delete().eq('host_id', authUser.id);
-    await supabase.from('challenge_history').delete().eq('host_id', authUser.id);
+    // מחיקה אגרסיבית מה-DB לפני עדכון המסך
+    const { error: playersError } = await supabase.from('players').delete().eq('host_id', authUser.id);
+    if (playersError) console.error("שגיאה במחיקת שחקנים:", playersError);
+
+    const { error: historyError } = await supabase.from('challenge_history').delete().eq('host_id', authUser.id);
+    if (historyError) console.error("שגיאה במחיקת היסטוריה:", historyError);
     
+    // איפוס הסטייט ב-DB כדי שהטלפונים יקלטו שהמשחק נגמר/אופס
     await supabase.from('game_states').upsert({
         host_id: authUser.id,
         status: 'lobby',
@@ -352,6 +355,7 @@ export default function TruthOrDareGame() {
         updated_at: new Date().toISOString()
     });
 
+    // עדכון המסך המקומי
     setPlayers([]);
     setGameState('lobby');
     setLastActivePlayer(null);
