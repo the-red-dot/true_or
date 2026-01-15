@@ -6,6 +6,8 @@ import {
   Flame, 
   CheckCircle, 
   XCircle,
+  Trash2,
+  LogOut,
   User as UserIcon,
   WifiOff,
   RefreshCw,
@@ -14,8 +16,7 @@ import {
   Beer,
   ThumbsUp,
   ThumbsDown,
-  Trash2,
-  LogOut
+  LogIn
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import QRCode from "react-qr-code";
@@ -134,14 +135,15 @@ export default function TruthOrDareGame() {
         } else {
             setAuthUser(null);
             setPlayers([]);
+            setJoinUrl(""); // ניקוי ה-URL ביציאה
             if (channel) supabase.removeChannel(channel);
         }
     });
 
     return () => { authListener.subscription.unsubscribe(); if (channel) supabase.removeChannel(channel); };
-  }, [players.length]); 
+  }, [players.length]);
 
-  // אוטומציה של הצבעות
+  // הצבעות אוטומטיות
   useEffect(() => {
       if (gameState !== 'challenge') return;
       const voters = Math.max(1, players.length - 1);
@@ -200,7 +202,6 @@ export default function TruthOrDareGame() {
     confetti({ particleCount: 200, spread: 120 });
     setLastActivePlayer(selectedPlayer);
     
-    // מעבר אוטומטי למצב המתנה אחרי 3 שניות
     setTimeout(() => {
         setGameState("waiting_for_spin"); 
         setSelectedPlayer(null); 
@@ -211,9 +212,8 @@ export default function TruthOrDareGame() {
     setGameState("penalty");
     playShotSound();
     
-    // לוגיקה אוטומטית: אחרי 5 שניות ממשיכים
     setTimeout(() => {
-        setLastActivePlayer(selectedPlayer); // הוא מקבל את השרביט לסובב
+        setLastActivePlayer(selectedPlayer); 
         setGameState("waiting_for_spin");
         setSelectedPlayer(null);
     }, 5000); 
@@ -234,11 +234,15 @@ export default function TruthOrDareGame() {
       if (data) setPlayers(data as Player[]);
   };
 
-  const handleLogout = async () => await supabase.auth.signOut();
+  const handleLogout = async () => {
+      if (confirm("האם אתה בטוח שברצונך להתנתק? זה יסגור את החדר.")) {
+          await supabase.auth.signOut();
+      }
+  };
   
   const resetGame = async () => {
     if (!authUser) return;
-    if (confirm("בטוח שאתה רוצה לאפס את המשחק?")) {
+    if (confirm("בטוח שאתה רוצה לאפס את המשחק ולמחוק את כל השחקנים?")) {
         await supabase.from('players').delete().eq('host_id', authUser.id);
         await supabase.from('challenge_history').delete().eq('host_id', authUser.id);
         setPlayers([]); 
@@ -257,31 +261,51 @@ export default function TruthOrDareGame() {
     <main className="h-screen w-full bg-black text-white font-sans overflow-hidden relative selection:bg-pink-500 flex flex-col" dir="rtl">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-black to-black z-0 pointer-events-none" />
       
-      {/* Top Bar */}
-      <div className="absolute top-6 left-6 z-50 flex items-center gap-4 bg-black/40 backdrop-blur px-4 py-2 rounded-full border border-white/10">
-          <div className="flex flex-col text-left">
-              <span className="text-xs text-gray-400 font-bold uppercase">קוד חדר</span>
-              <span className="text-xl font-mono text-pink-500 tracking-widest">{authUser?.email?.split('@')[0] || '...'}</span>
-          </div>
-          <div className="h-8 w-px bg-white/20"></div>
-          <div className="flex items-center gap-2">
-              <UserIcon size={16} /> {players.length}
-          </div>
-          <button onClick={handleManualRefresh} className="p-2 hover:bg-white/20 rounded-full transition-colors text-blue-400"><RefreshCw size={16} /></button>
-          {!isConnected && <WifiOff className="text-red-500 animate-pulse" />}
-      </div>
+      {/* Top Bar - מופיע רק אם מחוברים */}
+      {authUser && (
+        <div className="absolute top-6 left-6 z-50 flex items-center gap-4 bg-black/40 backdrop-blur px-4 py-2 rounded-full border border-white/10">
+            <div className="flex flex-col text-left">
+                <span className="text-xs text-gray-400 font-bold uppercase">קוד חדר</span>
+                <span className="text-xl font-mono text-pink-500 tracking-widest">{authUser.email?.split('@')[0] || '...'}</span>
+            </div>
+            <div className="h-8 w-px bg-white/20"></div>
+            <div className="flex items-center gap-2">
+                <UserIcon size={16} /> {players.length}
+            </div>
+            <button onClick={handleManualRefresh} className="p-2 hover:bg-white/20 rounded-full transition-colors text-blue-400"><RefreshCw size={16} /></button>
+            <button onClick={handleLogout} className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400" title="התנתק"><LogOut size={16} /></button>
+            {!isConnected && <WifiOff className="text-red-500 animate-pulse" />}
+        </div>
+      )}
 
       {/* --- Main Game Area --- */}
       <div className="flex-1 flex flex-col items-center justify-center relative z-10 p-10 h-full">
           
-          {/* LOBBY & WAITING - Big Player Circle */}
-          {(gameState === "lobby" || gameState === "waiting_for_spin") && (
+          {/* מצב מנותק - כפתור התחברות גדול */}
+          {!authUser && (
+              <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex flex-col items-center text-center space-y-8 p-10 bg-white/5 rounded-3xl border border-white/10 backdrop-blur-xl">
+                  <div className="bg-pink-600/20 p-6 rounded-full">
+                      <Trash2 className="w-20 h-20 text-pink-500 opacity-50" /> {/* סתם אייקון לרקע */}
+                  </div>
+                  <h1 className="text-5xl font-black">המשחק נותק</h1>
+                  <p className="text-xl text-gray-400 max-w-md">כדי לייצר קוד QR ולהתחיל משחק חדש, עליך להתחבר כמארח.</p>
+                  <Link href="/login" className="px-10 py-5 bg-gradient-to-r from-pink-600 to-purple-600 rounded-2xl font-bold text-2xl shadow-xl hover:scale-105 transition-transform flex items-center gap-4">
+                      <LogIn size={32} /> התחבר מחדש
+                  </Link>
+              </motion.div>
+          )}
+
+          {/* LOBBY & WAITING - Big Player Circle (רק כשמחוברים) */}
+          {authUser && (gameState === "lobby" || gameState === "waiting_for_spin") && (
             <div className="flex flex-col items-center w-full max-w-6xl h-full justify-center">
                 <h1 className="text-8xl md:text-9xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 drop-shadow-[0_0_30px_rgba(236,72,153,0.5)] mb-12 tracking-tighter">
                     {gameState === 'lobby' ? 'אמת או חובה' : 'הבא בתור...'}
                 </h1>
 
                 <div className="flex flex-wrap justify-center gap-8 px-4">
+                    {players.length === 0 && (
+                        <div className="text-2xl text-gray-500 animate-pulse">ממתין לשחקנים... סרקו את הקוד</div>
+                    )}
                     {players.map((p) => {
                         const playerReactions = reactions.filter(r => r.playerId === p.id);
                         const isController = gameState === 'waiting_for_spin' && lastActivePlayer?.id === p.id;
@@ -317,8 +341,7 @@ export default function TruthOrDareGame() {
                 <div className="mt-12 bg-white/5 backdrop-blur-xl p-4 rounded-2xl border border-white/10 flex items-center gap-6">
                     <span className="text-cyan-400 font-bold flex items-center gap-2"><Flame /> {heatLevel}</span>
                     <input type="range" min="1" max="10" value={heatLevel} onChange={handleHeatChange} className="w-32 accent-pink-500" />
-                    <button onClick={resetGame} disabled={!authUser} className="p-2 hover:bg-red-900/50 rounded-lg text-red-400"><Trash2 size={20}/></button>
-                    <button onClick={handleLogout} className="p-2 hover:bg-white/10 rounded-lg text-gray-400"><LogOut size={20}/></button>
+                    <button onClick={resetGame} className="p-2 hover:bg-red-900/50 rounded-lg text-red-400" title="איפוס משחק"><Trash2 size={20}/></button>
                 </div>
 
                 {gameState === 'lobby' && joinUrl && <div className="absolute bottom-10 right-10 bg-white p-3 rounded-xl transform rotate-3 hover:rotate-0 transition-all"><QRCode value={joinUrl} size={100} /></div>}
@@ -326,7 +349,7 @@ export default function TruthOrDareGame() {
           )}
 
           {/* SPINNING ANIMATION */}
-          {gameState === 'spinning' && (
+          {authUser && gameState === 'spinning' && (
               <div className="relative">
                   <motion.div animate={{ rotate: 360 * 5 }} transition={{ duration: 3, ease: "circOut" }} className="w-96 h-96 rounded-full border-[12px] border-dashed border-cyan-500/30 flex items-center justify-center">
                       <span className="text-9xl">🎡</span>
@@ -335,7 +358,7 @@ export default function TruthOrDareGame() {
           )}
 
           {/* SPOTLIGHT */}
-          {gameState === 'spotlight' && selectedPlayer && (
+          {authUser && gameState === 'spotlight' && selectedPlayer && (
               <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-center">
                   <div className="w-64 h-64 rounded-full border-8 border-white shadow-[0_0_100px_white] overflow-hidden mx-auto mb-8">
                       <img src={selectedPlayer.avatar} className="w-full h-full object-cover" />
@@ -345,7 +368,7 @@ export default function TruthOrDareGame() {
           )}
 
           {/* CHALLENGE CARD */}
-          {(gameState === 'challenge' || gameState === 'revealing') && currentChallenge && selectedPlayer && (
+          {authUser && (gameState === 'challenge' || gameState === 'revealing') && currentChallenge && selectedPlayer && (
               <div className="flex flex-col items-center justify-between h-full w-full py-10">
                   {/* Card */}
                   <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-5xl px-4 relative z-20">
