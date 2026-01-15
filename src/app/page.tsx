@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { 
   Flame, 
   CheckCircle, 
@@ -12,7 +12,10 @@ import {
   WifiOff,
   RefreshCw,
   Sparkles,
-  Cpu // אייקון להצגת המודל
+  Cpu, // אייקון להצגת המודל
+  Beer,
+  ThumbsUp,
+  ThumbsDown
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import QRCode from "react-qr-code";
@@ -37,6 +40,8 @@ type Challenge = {
   usedModel?: string; // שדה חדש להצגת המודל הפעיל
 };
 
+type Reaction = { id: string; emoji: string; x: number; y: number; };
+
 export default function TruthOrDareGame() {
   // --- State ---
   const [gameState, setGameState] = useState<"lobby" | "spinning" | "spotlight" | "revealing" | "challenge" | "penalty">("lobby");
@@ -52,60 +57,104 @@ export default function TruthOrDareGame() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(true);
 
+  // --- Interactive State ---
+  const [reactions, setReactions] = useState<Reaction[]>([]); 
+  const [votes, setVotes] = useState<{likes: number, dislikes: number, shots: number}>({likes: 0, dislikes: 0, shots: 0});
+  const [shotVoteMode, setShotVoteMode] = useState(false);
+
+  // --- Sync Game State to DB (For Phones) ---
+  const syncGameStateToDB = async (status: string, playerId: string | null = null, challenge: any = null) => {
+      if (!authUser) return;
+      await supabase.from('game_states').upsert({
+          host_id: authUser.id,
+          status: status,
+          current_player_id: playerId,
+          challenge_text: challenge?.content || null,
+          challenge_type: challengeType,
+          updated_at: new Date().toISOString()
+      });
+  };
+
+  // Sync whenever game state changes
+  useEffect(() => {
+      syncGameStateToDB(gameState, selectedPlayer?.id, currentChallenge);
+      // Reset votes when phase changes
+      if (gameState !== 'challenge') {
+          setVotes({likes: 0, dislikes: 0, shots: 0});
+      }
+  }, [gameState, selectedPlayer, currentChallenge]);
+
   // --- Realtime Players Listener & Auth Listener ---
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
 
-    const loadHostPlayers = async (userId: string) => {
+    const setupRealtime = async (userId: string) => {
+        // Load initial players
         const { data, error } = await supabase
           .from('players')
           .select('*')
           .eq('host_id', userId)
           .order('created_at', { ascending: true });
         
-        if (error) {
-            console.error("Supabase Load Error:", error);
-            setIsConnected(false);
-        } else {
-            setPlayers(data as Player[]);
-            setIsConnected(true);
-        }
-    };
+        if (data) setPlayers(data as Player[]);
+        if (error) setIsConnected(false);
+        else setIsConnected(true);
 
-    const subscribeToRoom = (userId: string) => {
+        // Subscribe to changes and broadcasts
         if (channel) supabase.removeChannel(channel);
         
         channel = supabase
           .channel(`room_${userId}`)
           .on(
             'postgres_changes', 
-            { 
-              event: 'INSERT', 
-              schema: 'public', 
-              table: 'players',
-              filter: `host_id=eq.${userId}` 
-            }, 
-            (payload) => {
-              const newPlayer = payload.new as Player;
-              setPlayers((prev) => [...prev, newPlayer]);
-            }
+            { event: 'INSERT', schema: 'public', table: 'players', filter: `host_id=eq.${userId}` }, 
+            (payload) => setPlayers((prev) => [...prev, payload.new as Player])
           )
           .on(
             'postgres_changes', 
-            { 
-              event: 'DELETE', 
-              schema: 'public', 
-              table: 'players',
-              filter: `host_id=eq.${userId}`
-            }, 
-            (payload) => {
-              setPlayers((prev) => prev.filter(p => p.id !== payload.old.id));
-            }
+            { event: 'DELETE', schema: 'public', table: 'players', filter: `host_id=eq.${userId}` }, 
+            (payload) => setPlayers((prev) => prev.filter(p => p.id !== payload.old.id))
           )
+          // קבלת אירועים מהשלטים
+          .on('broadcast', { event: 'game_event' }, (event) => {
+              handleGameEvent(event.payload);
+          })
           .subscribe((status) => {
             if (status === 'SUBSCRIBED') setIsConnected(true);
-            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setIsConnected(false);
+            else setIsConnected(false);
           });
+    };
+
+    const handleGameEvent = (data: any) => {
+        const { type, payload } = data;
+        
+        // Emojis
+        if (type === 'emoji') {
+            const id = Math.random().toString(36);
+            const x = Math.random() * 80 + 10; 
+            setReactions(prev => [...prev, { id, emoji: payload, x, y: 100 }]);
+            setTimeout(() => setReactions(prev => prev.filter(r => r.id !== id)), 3000);
+        }
+
+        // Active Player Action
+        if (type === 'action_skip') {
+            handleSkip(); 
+        }
+
+        // Voting Logic
+        if (type === 'vote_like') setVotes(v => ({ ...v, likes: v.likes + 1 }));
+        if (type === 'vote_dislike') setVotes(v => ({ ...v, dislikes: v.dislikes + 1 }));
+        if (type === 'vote_shot') {
+             setVotes(v => {
+                 const newShots = v.shots + 1;
+                 const activeVoters = Math.max(1, players.length - 1);
+                 // אם 49% הצביעו שוט
+                 if (newShots > activeVoters * 0.49) {
+                     triggerGroupShot();
+                 }
+                 return { ...v, shots: newShots };
+             });
+        }
     };
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
@@ -114,8 +163,7 @@ export default function TruthOrDareGame() {
             if (typeof window !== "undefined") {
                 setJoinUrl(`${window.location.origin}/join?hostId=${session.user.id}`);
             }
-            loadHostPlayers(session.user.id);
-            subscribeToRoom(session.user.id);
+            setupRealtime(session.user.id);
         } else {
             setAuthUser(null);
             setPlayers([]);
@@ -127,7 +175,29 @@ export default function TruthOrDareGame() {
         authListener.subscription.unsubscribe();
         if (channel) supabase.removeChannel(channel);
     };
-  }, []);
+  }, [players.length]); // תלות ב-players לחישוב אחוזים
+
+  // Vote Decision Logic
+  useEffect(() => {
+      if (gameState !== 'challenge') return;
+      
+      const activeVoters = Math.max(1, players.length - 1);
+      
+      if (votes.likes > activeVoters * 0.49) {
+          handleDone();
+      } else if (votes.dislikes > activeVoters * 0.5) {
+          handleSkip(); // נכשל
+      }
+  }, [votes, players.length, gameState]);
+
+  const triggerGroupShot = () => {
+      setShotVoteMode(true);
+      playShotSound(); // סאונד של שוט
+      setTimeout(() => {
+          setShotVoteMode(false);
+          setGameState("lobby");
+      }, 5000);
+  };
 
   const handleManualRefresh = async () => {
       if (!authUser) return;
@@ -157,16 +227,8 @@ export default function TruthOrDareGame() {
   const resetGame = async () => {
     if (!authUser) return;
     if (confirm("בטוח שאתה רוצה לאפס את המשחק ולמחוק את כל השחקנים וההיסטוריה?")) {
-        const { error: playersError } = await supabase
-          .from('players')
-          .delete()
-          .eq('host_id', authUser.id);
-        
-        const { error: historyError } = await supabase
-          .from('challenge_history')
-          .delete()
-          .eq('host_id', authUser.id);
-          
+        const { error: playersError } = await supabase.from('players').delete().eq('host_id', authUser.id);
+        const { error: historyError } = await supabase.from('challenge_history').delete().eq('host_id', authUser.id);
         if (playersError || historyError) console.error("Error resetting:", playersError || historyError);
         setPlayers([]); 
     }
@@ -265,6 +327,40 @@ export default function TruthOrDareGame() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-black to-black z-0 pointer-events-none" />
       <div className={`absolute inset-0 transition-opacity duration-1000 z-0 opacity-30 ${heatLevel > 7 ? 'bg-red-900/20' : 'bg-transparent'}`} />
 
+      {/* --- Floating Emojis --- */}
+      <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
+          <AnimatePresence>
+              {reactions.map(r => (
+                  <motion.div
+                    key={r.id}
+                    initial={{ opacity: 0, y: '100vh', x: `${r.x}vw`, scale: 0.5 }}
+                    animate={{ opacity: 1, y: '50vh', scale: 1.5 }}
+                    exit={{ opacity: 0, y: '0vh', scale: 2 }}
+                    transition={{ duration: 2.5, ease: "easeOut" }}
+                    className="absolute text-7xl drop-shadow-2xl"
+                  >
+                      {r.emoji}
+                  </motion.div>
+              ))}
+          </AnimatePresence>
+      </div>
+
+      {/* --- Shot Vote Alert --- */}
+      <AnimatePresence>
+          {shotVoteMode && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-[100] bg-red-600/95 backdrop-blur-xl flex flex-col items-center justify-center text-white"
+              >
+                  <h1 className="text-9xl font-black uppercase tracking-tighter mb-8 animate-bounce drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)]">SHOT TIME!</h1>
+                  <p className="text-5xl font-bold">הקהל החליט: כולם שותים!</p>
+                  <Beer size={150} className="mt-12 animate-spin text-yellow-300" />
+              </motion.div>
+          )}
+      </AnimatePresence>
+
       {/* --- Top Bar --- */}
       <div className="absolute top-4 left-4 z-50 flex flex-col gap-2 items-end ltr">
         {authUser ? (
@@ -332,6 +428,7 @@ export default function TruthOrDareGame() {
             )}
           </div>
 
+          {/* לוח בקרה */}
           <div className="bg-white/5 backdrop-blur-xl p-8 rounded-[2rem] border border-white/10 w-full max-w-3xl shadow-2xl">
             <div className="flex items-center justify-between mb-6">
               <span className="text-cyan-400 font-bold text-xl flex items-center gap-2"><Flame className="fill-cyan-400" /> רמת חום: {heatLevel}</span>
@@ -368,6 +465,7 @@ export default function TruthOrDareGame() {
             </div>
           </div>
 
+          {/* QR Code */}
           <div className="absolute bottom-10 right-10 bg-white p-4 rounded-2xl opacity-90 shadow-[0_0_30px_rgba(255,255,255,0.2)] flex flex-col items-center gap-2 transform rotate-2 hover:rotate-0 transition-transform duration-300 hover:scale-110 cursor-none">
              {authUser && joinUrl ? (
                 <div style={{ height: "auto", maxWidth: "140px", width: "100%" }}>
@@ -441,7 +539,7 @@ export default function TruthOrDareGame() {
                 transition={{ delay: 0.5 }}
                 className="mt-16 text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 drop-shadow-sm"
             >
-                תתכונן!
+                {selectedPlayer.gender === 'female' ? 'תתכונני!' : 'תתכונן!'}
             </motion.h2>
         </motion.div>
       )}
@@ -490,7 +588,7 @@ export default function TruthOrDareGame() {
                 </div>
             </div>
             <h2 className="text-4xl font-bold text-white mt-4">{selectedPlayer.name}</h2>
-            <h3 className={`text-6xl font-black uppercase tracking-widest mt-2 ${challengeType === 'אמת' ? 'text-blue-400 drop-shadow-[0_0_20px_rgba(59,130,246,0.6)]' : 'text-pink-500 drop-shadow-[0_0_20px_rgba(236,72,153,0.6)]'}`}>
+            <h3 className={`text-6xl font-black uppercase tracking-widest mt-2 ${challengeType === 'אמת' ? 'text-blue-400 drop-shadow-[0_0_20px_rgba(59,130,246,0.6)]' : 'text-pink-500 drop-shadow-[0_0_10px_rgba(236,72,153,0.6)]'}`}>
               {challengeType}
             </h3>
           </div>
@@ -506,28 +604,39 @@ export default function TruthOrDareGame() {
                {currentChallenge.content}
              </p>
 
+             {/* Voting Meter */}
+             <div className="w-full bg-gray-800/50 h-3 rounded-full mt-8 overflow-hidden flex shadow-inner border border-white/5">
+                  <div className="bg-green-500 h-full transition-all duration-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]" style={{ width: `${(votes.likes / Math.max(1, players.length-1)) * 100}%` }} />
+                  <div className="bg-red-500 h-full transition-all duration-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" style={{ width: `${(votes.dislikes / Math.max(1, players.length-1)) * 100}%` }} />
+             </div>
+             <div className="flex justify-between w-full text-sm font-bold text-gray-300 mt-2 px-2">
+                  <span className="flex items-center gap-1 text-green-400"><ThumbsUp size={14}/> {votes.likes}</span>
+                  <span className="flex items-center gap-1 text-red-400">{votes.dislikes} <ThumbsDown size={14}/></span>
+             </div>
+
              {/* חיווי מודל AI */}
              {currentChallenge.usedModel && (
                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 text-[10px] text-gray-500 uppercase tracking-widest opacity-50">
                      <Cpu size={10} />
-                     <span>Powered by {currentChallenge.usedModel}</span>
+                     <span>Generated by {currentChallenge.usedModel}</span>
                  </div>
              )}
           </motion.div>
 
           <div className="flex gap-8 mt-12 w-full justify-center">
-            <button onClick={handleSkip} className="group flex flex-col items-center gap-2">
-              <div className="w-20 h-20 rounded-full bg-gray-800 flex items-center justify-center group-hover:bg-red-600 transition-colors border-2 border-transparent group-hover:border-red-400 shadow-lg">
-                <XCircle size={36} className="text-gray-400 group-hover:text-white" />
+            {/* כפתורי המארח נשארים כגיבוי */}
+            <button onClick={handleSkip} className="group flex flex-col items-center gap-2 opacity-50 hover:opacity-100 transition-opacity">
+              <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center border-2 border-transparent group-hover:border-red-400">
+                <XCircle size={28} className="text-gray-400 group-hover:text-white" />
               </div>
-              <span className="font-bold text-gray-400 group-hover:text-white text-sm">דלג (שוט)</span>
+              <span className="font-bold text-gray-500 text-xs">כפתור חירום (דלג)</span>
             </button>
 
-            <button onClick={handleDone} className="group flex flex-col items-center gap-2">
-              <div className="w-24 h-24 rounded-full bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center shadow-[0_0_30px_rgba(16,185,129,0.5)] group-hover:scale-110 transition-transform border-4 border-white/20">
-                <CheckCircle size={48} className="text-white" />
+            <button onClick={handleDone} className="group flex flex-col items-center gap-2 opacity-50 hover:opacity-100 transition-opacity">
+              <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center border-2 border-transparent group-hover:border-green-400">
+                <CheckCircle size={28} className="text-gray-400 group-hover:text-white" />
               </div>
-              <span className="font-bold text-green-400 group-hover:text-green-300 text-lg">בוצע!</span>
+              <span className="font-bold text-gray-500 text-xs">כפתור חירום (בוצע)</span>
             </button>
           </div>
         </motion.div>
