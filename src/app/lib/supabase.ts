@@ -1,3 +1,5 @@
+// truth-or-dare-ai\src\app\lib\supabase.ts
+
 import { createClient } from '@supabase/supabase-js';
 
 // שליפת ההגדרות ממשתני הסביבה (עם סימן קריאה כדי להגיד ל-TS שזה קיים בטוח)
