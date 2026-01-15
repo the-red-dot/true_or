@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, User, ArrowLeft, Camera, Loader2, AlertTriangle, ThumbsUp, ThumbsDown, Beer, XCircle, Flame, RefreshCw } from "lucide-react";
+import { Upload, User, ArrowLeft, Camera, Check, Loader2, AlertTriangle, ThumbsUp, ThumbsDown, Beer, XCircle, Flame, RefreshCw, LogOut } from "lucide-react";
 import { supabase } from "@/app/lib/supabase";
 import { useSearchParams } from "next/navigation";
 
@@ -67,7 +67,7 @@ function GameController() {
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_states', filter: `host_id=eq.${hostId}` }, 
         (payload) => {
             setGameState(payload.new);
-            // עדכון חום מקומי רק אם השתנה בטלוויזיה (למשל על ידי מישהו אחר)
+            // עדכון חום מקומי רק אם השתנה בטלוויזיה
             if (payload.new.heat_level && payload.new.heat_level !== localHeat) {
                 setLocalHeat(payload.new.heat_level);
             }
@@ -93,6 +93,18 @@ function GameController() {
 
   const handleSpin = () => {
       sendAction('trigger_spin');
+  };
+
+  // פונקציית התנתקות
+  const handleLeaveGame = async () => {
+      if(confirm("האם אתה בטוח שברצונך לצאת מהמשחק?")) {
+          if (myPlayerId) {
+              await supabase.from('players').delete().eq('id', myPlayerId);
+              localStorage.removeItem(`player_id_${hostId}`);
+              setMyPlayerId(null);
+              setIsSubmitted(false);
+          }
+      }
   };
 
   // --- Registration Logic ---
@@ -147,29 +159,34 @@ function GameController() {
   if (isSubmitted && myPlayerId) {
       const isMyTurnToPlay = gameState?.current_player_id === myPlayerId;
       // אם זה המצב 'waiting_for_spin' ואני השחקן האחרון שהיה פעיל - אני מסובב
-      // או אם זה הלובי ועדיין אין שחקן פעיל אחרון (תחילת משחק)
+      // או אם זה הלובי ועדיין אין שחקן פעיל אחרון (תחילת משחק) -> השחקן הזה מסומן ב-DB ע"י הטלוויזיה
       const isMyTurnToSpin = (gameState?.status === 'waiting_for_spin' && gameState?.last_active_player_id === myPlayerId) 
-                             || (gameState?.status === 'lobby' && !gameState?.last_active_player_id);
+                             || (gameState?.status === 'lobby' && gameState?.last_active_player_id === myPlayerId);
 
       return (
           <div className="fixed inset-0 bg-gray-900 text-white flex flex-col overflow-hidden" dir="rtl">
-              {/* Header - Safe Area Top */}
+              {/* Header */}
               <div className="pt-4 px-4 pb-2 bg-gray-800/50 backdrop-blur-md border-b border-gray-700/50 flex justify-between items-center z-10">
                   <div className="flex items-center gap-3">
                       {imagePreview && <img src={imagePreview} className="w-8 h-8 rounded-full object-cover border border-white" />}
                       <span className="font-bold truncate max-w-[100px]">{name}</span>
                   </div>
-                  <div className="text-[10px] px-2 py-1 bg-green-500/20 text-green-400 rounded-full border border-green-500/30 animate-pulse">מחובר</div>
+                  <div className="flex gap-2">
+                    <div className="text-[10px] px-2 py-1 bg-green-500/20 text-green-400 rounded-full border border-green-500/30 flex items-center">מחובר</div>
+                    <button onClick={handleLeaveGame} className="p-1 bg-red-500/20 text-red-400 rounded-lg"><LogOut size={16}/></button>
+                  </div>
               </div>
 
-              {/* Main Content - No Scroll, Centered */}
+              {/* Main Content */}
               <div className="flex-1 flex flex-col justify-center items-center p-6 relative w-full max-w-md mx-auto overflow-y-auto">
                   
                   {/* --- SPIN CONTROLS --- */}
                   {isMyTurnToSpin ? (
                       <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full space-y-6">
                           <div className="text-center">
-                              <h2 className="text-3xl font-black mb-1 text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">השרביט אצלך!</h2>
+                              <h2 className="text-3xl font-black mb-1 text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">
+                                  {gameState?.status === 'lobby' ? "אתה מתחיל!" : "השרביט אצלך!"}
+                              </h2>
                               <p className="text-gray-400 text-sm">בחר רמת חום וסובב</p>
                           </div>
 
@@ -187,11 +204,11 @@ function GameController() {
                           </div>
 
                           <button onClick={handleSpin} className="w-full py-6 bg-gradient-to-r from-pink-600 to-purple-600 rounded-3xl font-black text-3xl shadow-[0_0_30px_rgba(236,72,153,0.4)] active:scale-95 transition-transform flex items-center justify-center gap-3">
-                              <RefreshCw size={32} className="animate-spin-slow" /> סובב!
+                              <RefreshCw size={32} className="animate-spin-slow" /> {gameState?.status === 'lobby' ? "התחל משחק" : "סובב!"}
                           </button>
                       </motion.div>
                   ) : (
-                      /* --- NOT SPINNING --- */
+                      /* --- NOT SPINNING (Spectator or Active Player) --- */
                       <div className="w-full space-y-6">
                           
                           {/* Active Player Controls */}
@@ -202,10 +219,7 @@ function GameController() {
                                       <p className="text-white/80 text-lg">{gameState?.challenge_type}</p>
                                   </div>
                                   
-                                  <button 
-                                    onClick={() => sendAction('action_skip')}
-                                    className="w-full py-5 bg-red-500/20 hover:bg-red-500/30 text-red-200 border-2 border-red-500 rounded-2xl font-bold text-xl flex items-center justify-center gap-3 active:scale-95 transition-all"
-                                  >
+                                  <button onClick={() => sendAction('action_skip')} className="w-full py-5 bg-red-500/20 hover:bg-red-500/30 text-red-200 border-2 border-red-500 rounded-2xl font-bold text-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
                                       <XCircle /> אני מוותר (שוט!)
                                   </button>
                                   <p className="text-center text-xs text-gray-500 mt-2">לחיצה תעביר את התור</p>
@@ -229,7 +243,7 @@ function GameController() {
                               <div className="text-center text-gray-400 animate-pulse">
                                   {gameState?.status === 'spinning' && <div className="text-6xl animate-spin mb-4">🎲</div>}
                                   <p className="text-xl font-bold">
-                                      {gameState?.status === 'lobby' ? "ממתינים להתחלה..." : 
+                                      {gameState?.status === 'lobby' ? "ממתינים למארח..." : 
                                        gameState?.status === 'spinning' ? "מגריל..." : 
                                        gameState?.status === 'penalty' ? "שוט!" :
                                        "המשחק רץ בטלוויזיה..."}
@@ -240,18 +254,12 @@ function GameController() {
                   )}
               </div>
 
-              {/* Emoji Bar - Bottom Safe Area */}
+              {/* Emoji Bar */}
               <div className="w-full pt-3 pb-6 bg-gray-900 border-t border-gray-800 z-10">
                   <p className="text-center text-[10px] text-gray-500 mb-2 font-bold uppercase tracking-widest">תגובה מהירה</p>
                   <div className="flex justify-between gap-2 overflow-x-auto pb-2 scrollbar-hide px-2">
                       {[{ icon: '😂' }, { icon: '😱' }, { icon: '😍' }, { icon: '🤢' }, { icon: '😈' }, { icon: '🫣' }, { icon: '🔥' }].map((item, idx) => (
-                          <button 
-                            key={idx}
-                            onClick={() => sendAction('emoji', item.icon)}
-                            className="bg-gray-800 p-3 rounded-2xl text-2xl active:scale-75 transition-transform shadow-md border border-gray-700 flex-shrink-0"
-                          >
-                              {item.icon}
-                          </button>
+                          <button key={idx} onClick={() => sendAction('emoji', item.icon)} className="bg-gray-800 p-3 rounded-2xl text-2xl active:scale-75 transition-transform shadow-md border border-gray-700 flex-shrink-0">{item.icon}</button>
                       ))}
                   </div>
               </div>

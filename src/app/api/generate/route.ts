@@ -11,12 +11,12 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { playerName, playerGender, heatLevel, type, previousChallenges } = body;
 
-    // נרמול מגדר
+    // נרמול מגדר (התאמה למבנה בדאטה בייס)
     let dbGender = 'neutral';
     if (playerGender === 'male') dbGender = 'male';
     if (playerGender === 'female') dbGender = 'female';
 
-    // טווח רמות: גמישות של +/- 1
+    // טווח רמות: גמישות של +/- 1 כדי למצוא יותר תוצאות
     let minHeat = heatLevel === 1 ? 1 : heatLevel - 1;
     let maxHeat = heatLevel === 10 ? 10 : heatLevel + 1;
 
@@ -31,7 +31,6 @@ export async function POST(req: Request) {
 
     if (error) {
       console.error("Supabase Error:", error);
-      // Fallback מקומי למקרה חירום
       return NextResponse.json({
           content: `משימת גיבוי (${type}): ספר פדיחה שקרתה לך לאחרונה!`,
           spiciness: heatLevel,
@@ -49,7 +48,7 @@ export async function POST(req: Request) {
         });
     }
 
-    // סינון משימות שכבר היו
+    // סינון משימות שכבר היו (לפי הטקסט שנשלח מהקלאיינט)
     const availableTasks = tasks.filter((t: any) => 
         !previousChallenges.some((prev: string) => prev === t.content)
     );
