@@ -13,6 +13,14 @@ type GameEvent = {
   playerId: string;
 };
 
+// פונקציית עזר ליצירת מזהה ייחודי (כדי לא להסתמך על השרת ולעקוף RLS)
+const generateUUID = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
 // --- קומפוננטת השלט והטופס ---
 function GameController() {
   const searchParams = useSearchParams();
@@ -105,19 +113,25 @@ function GameController() {
   const handleJoin = async () => {
     if (!name || !gender) return alert("חסר שם או מין");
     setLoading(true);
+    
+    // יצירת מזהה בצד הלקוח (תיקון קריטי!)
+    const newPlayerId = generateUUID();
+
     try {
-        const { data, error } = await supabase.from('players').insert([{
+        const { error } = await supabase.from('players').insert([{
+            id: newPlayerId, // שולחים את ה-ID שיצרנו
             name, gender, host_id: hostId,
             avatar: imagePreview || `bg-pink-500`
-        }]).select().single();
+        }]); // בלי .select() שגורם לשגיאת הרשאות
 
         if (error) throw error;
         
         // שמירת המזהה לשימוש בשלט
-        setMyPlayerId(data.id);
-        localStorage.setItem(`player_id_${hostId}`, data.id);
+        setMyPlayerId(newPlayerId);
+        localStorage.setItem(`player_id_${hostId}`, newPlayerId);
         setIsSubmitted(true);
     } catch (e) {
+        console.error(e);
         alert("שגיאה בהצטרפות");
     } finally {
         setLoading(false);
