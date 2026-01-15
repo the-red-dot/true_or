@@ -1,5 +1,4 @@
 // truth-or-dare-ai\src\app\join\page.tsx
-
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
@@ -10,7 +9,7 @@ import { useSearchParams } from "next/navigation";
 
 // --- סוגי אירועים לשידור ---
 type GameEvent = {
-  type: 'emoji' | 'action_skip' | 'vote_like' | 'vote_dislike' | 'vote_shot' | 'trigger_spin' | 'update_heat';
+  type: 'emoji' | 'action_skip' | 'vote_like' | 'vote_dislike' | 'vote_shot' | 'trigger_spin' | 'update_heat' | 'player_left';
   payload: any;
   playerId: string;
 };
@@ -97,11 +96,14 @@ function GameController() {
       sendAction('trigger_spin');
   };
 
-  // פונקציית התנתקות
+  // פונקציית התנתקות - שולחת בקשה לטלוויזיה למחוק אותי
   const handleLeaveGame = async () => {
       if(confirm("האם אתה בטוח שברצונך לצאת מהמשחק?")) {
           if (myPlayerId) {
-              await supabase.from('players').delete().eq('id', myPlayerId);
+              // שליחת בקשת יציאה לטלוויזיה
+              await sendAction('player_left');
+              
+              // ניקוי מקומי
               localStorage.removeItem(`player_id_${hostId}`);
               setMyPlayerId(null);
               setIsSubmitted(false);

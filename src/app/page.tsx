@@ -66,43 +66,27 @@ export default function TruthOrDareGame() {
   const [votes, setVotes] = useState<{likes: number, dislikes: number, shots: number}>({likes: 0, dislikes: 0, shots: 0});
   const [shotVoteMode, setShotVoteMode] = useState(false);
 
-  // --- ניהול תורות אוטומטי (שחקן ראשון מקבל שליטה) ---
+  // --- ניהול תורות אוטומטי (שחקן ראשון מקבל שליטה בלובי) ---
   useEffect(() => {
-    // אם אין שחקנים, מאפסים את השליטה
-    if (players.length === 0) {
-        if (lastActivePlayer !== null) setLastActivePlayer(null);
-        return;
-    }
-
-    // אם אנחנו בלובי או מחכים לספין, ואין שחקן פעיל (או שהשחקן הפעיל עזב)
-    if (gameState === 'lobby' || gameState === 'waiting_for_spin') {
-        const currentPlayerExists = players.find(p => p.id === lastActivePlayer?.id);
-        
-        // אם השחקן השולט לא קיים (עזב) או שעדיין לא הוגדר - מעבירים לראשון ברשימה
-        if (!lastActivePlayer || !currentPlayerExists) {
-            console.log("Transferring control to first player:", players[0].name);
+    if (gameState === 'lobby' && players.length > 0) {
+        // בלובי, תמיד הראשון ברשימה הוא בעל השרביט
+        if (lastActivePlayer?.id !== players[0].id) {
             setLastActivePlayer(players[0]);
         }
+    } else if (players.length === 0) {
+        setLastActivePlayer(null);
     }
-  }, [players, gameState, lastActivePlayer]);
+  }, [players, gameState]);
 
   // --- Sync Game State to DB ---
   const syncGameStateToDB = async (status: string, currentPlayerId: string | null = null, challenge: any = null) => {
       if (!authUser) return;
       
-      // מוודאים שתמיד נשלח ID חוקי של שחקן שולט
-      let activeControllerId = lastActivePlayer?.id;
-      
-      // מנגנון גיבוי: אם אין שחקן שולט, ננסה לקחת את הראשון מהרשימה המקומית
-      if (!activeControllerId && players.length > 0) {
-          activeControllerId = players[0].id;
-      }
-
       await supabase.from('game_states').upsert({
           host_id: authUser.id,
           status: status,
           current_player_id: currentPlayerId,
-          last_active_player_id: activeControllerId, // קריטי: זה מה שפותח את התפריט בטלפון
+          last_active_player_id: lastActivePlayer?.id, 
           heat_level: heatLevel,
           challenge_text: challenge?.content || null,
           challenge_type: challengeType,
@@ -129,28 +113,30 @@ export default function TruthOrDareGame() {
     let channel: RealtimeChannel | null = null;
 
     const setupRealtime = async (userId: string) => {
-        // טעינה ראשונית
         const { data } = await supabase.from('players').select('*').eq('host_id', userId).order('created_at', { ascending: true });
         if (data) setPlayers(data as Player[]);
 
-        // האזנה לשינויים
         channel = supabase.channel(`room_${userId}`)
           .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'players', filter: `host_id=eq.${userId}` }, 
              (payload) => setPlayers(prev => [...prev, payload.new as Player]))
           .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'players', filter: `host_id=eq.${userId}` }, 
              (payload) => {
-                 setPlayers(prev => prev.filter(p => p.id !== payload.old.id));
-                 // אם השחקן הנבחר הוא זה שעזב, מבטלים את הבחירה
+                 setPlayers(prev => {
+                     const newPlayers = prev.filter(p => p.id !== payload.old.id);
+                     return newPlayers;
+                 });
+                 
+                 // אם השחקן הנבחר הוא זה שעזב
                  if (selectedPlayer?.id === payload.old.id) {
                      setSelectedPlayer(null);
-                     setGameState('lobby');
+                     setGameState('waiting_for_spin');
                  }
              })
           .on('broadcast', { event: 'game_event' }, (event) => handleGameEvent(event.payload))
           .subscribe((status) => setIsConnected(status === 'SUBSCRIBED'));
     };
 
-    const handleGameEvent = (data: any) => {
+    const handleGameEvent = async (data: any) => {
         const { type, payload, playerId } = data;
         
         if (type === 'emoji') {
@@ -170,11 +156,18 @@ export default function TruthOrDareGame() {
                  return { ...v, shots: newShots };
              });
         }
+        // טיפול ביציאת שחקן (נשלח מהטלפון)
+        if (type === 'player_left') {
+             await supabase.from('players').delete().eq('id', playerId);
+        }
     };
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
         if (session?.user) {
             setAuthUser(session.user);
+            if (typeof window !== "undefined") {
+                setJoinUrl(`${window.location.origin}/join?hostId=${session.user.id}`);
+            }
             setupRealtime(session.user.id);
         } else {
             setAuthUser(null);
@@ -280,7 +273,6 @@ export default function TruthOrDareGame() {
 
   const handleLogout = async () => {
       if (confirm("האם אתה בטוח שברצונך להתנתק? זה יסגור את החדר.")) {
-          // לפני שמתנתקים, מאפסים את הסטייט ב-DB כדי שכולם יעופו
           if (authUser) {
               await supabase.from('game_states').delete().eq('host_id', authUser.id);
           }
@@ -291,11 +283,10 @@ export default function TruthOrDareGame() {
   const resetGame = async () => {
     if (!authUser) return;
     if (confirm("בטוח שאתה רוצה לאפס את המשחק ולמחוק את כל השחקנים?")) {
-        // 1. מחיקת שחקנים והיסטוריה
         await supabase.from('players').delete().eq('host_id', authUser.id);
         await supabase.from('challenge_history').delete().eq('host_id', authUser.id);
         
-        // 2. איפוס מצב המשחק ב-DB ללובי נקי (חשוב מאוד!)
+        // איפוס מצב משחק
         await supabase.from('game_states').upsert({
             host_id: authUser.id,
             status: 'lobby',
@@ -305,7 +296,6 @@ export default function TruthOrDareGame() {
             updated_at: new Date().toISOString()
         });
 
-        // 3. איפוס לוקאלי
         setPlayers([]); 
         setGameState('lobby');
         setLastActivePlayer(null);
@@ -373,9 +363,7 @@ export default function TruthOrDareGame() {
                     )}
                     {players.map((p, index) => {
                         const playerReactions = reactions.filter(r => r.playerId === p.id);
-                        const isFirstPlayer = gameState === 'lobby' && index === 0;
-                        const isLastActive = gameState === 'waiting_for_spin' && lastActivePlayer?.id === p.id;
-                        const isController = isFirstPlayer || isLastActive;
+                        const isController = lastActivePlayer?.id === p.id;
 
                         return (
                             <div key={p.id} className="relative group">
@@ -405,7 +393,6 @@ export default function TruthOrDareGame() {
                     })}
                 </div>
 
-                {/* שליטה ידנית למארח */}
                 <div className="mt-12 bg-white/5 backdrop-blur-xl p-4 rounded-2xl border border-white/10 flex items-center gap-6">
                     <span className="text-cyan-400 font-bold flex items-center gap-2"><Flame /> {heatLevel}</span>
                     <input type="range" min="1" max="10" value={heatLevel} onChange={handleHeatChange} className="w-32 accent-pink-500" />
