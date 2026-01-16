@@ -68,6 +68,7 @@ export const useHostGameLogic = (
 
   const isActiveRow = (p: any, sid: string | null) => {
     if (!sid) return false;
+    // בדיקה פשוטה יותר - אם ה-session_id תואם והשחקן פעיל
     return p?.session_id === sid && p?.is_active === true;
   };
 
@@ -236,17 +237,24 @@ export const useHostGameLogic = (
         )
         .subscribe();
 
-      // Listen to players
+      // Listen to players - FIXED REALTIME LOGIC
       channel = supabase
-        .channel(`room_${hostId}`)
+        .channel(`room_${hostId}_players`)
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
           (payload) => {
             const np = payload.new as any;
             const sidNow = stateRef.current.sessionId;
-            if (!isActiveRow(np, sidNow)) return;
-            setPlayers((prev) => (prev.some((p) => p.id === np.id) ? prev : [...prev, np]));
+            
+            // אנחנו מוסיפים רק אם השחקן שייך לסשן הנוכחי והוא פעיל
+            if (isActiveRow(np, sidNow)) {
+                 setPlayers((prev) => {
+                    const exists = prev.some((p) => p.id === np.id);
+                    if (exists) return prev;
+                    return [...prev, np];
+                 });
+            }
           }
         )
         .on(
@@ -255,14 +263,29 @@ export const useHostGameLogic = (
           (payload) => {
             const up = payload.new as any;
             const sidNow = stateRef.current.sessionId;
+
+            // אם השחקן לא פעיל או שייך לסשן אחר - הסר אותו
             if (!isActiveRow(up, sidNow)) {
               setPlayers((prev) => prev.filter((p) => p.id !== up.id));
               return;
             }
+
+            // אחרת, עדכן או הוסף אותו
             setPlayers((prev) => {
               const exists = prev.some((p) => p.id === up.id);
               return exists ? prev.map((p) => (p.id === up.id ? up : p)) : [...prev, up];
             });
+          }
+        )
+        // הוספתי גם האזנה למחיקה למקרה שמשהו נמחק מהדאטהבייס ידנית
+         .on(
+          "postgres_changes",
+          { event: "DELETE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
+          (payload) => {
+             const deletedId = (payload.old as any)?.id;
+             if (deletedId) {
+                setPlayers((prev) => prev.filter((p) => p.id !== deletedId));
+             }
           }
         )
         .on("broadcast", { event: "game_event" }, (event) => handleGameEvent(event.payload))
@@ -278,6 +301,7 @@ export const useHostGameLogic = (
       if (!allowedTypes.has(type)) return;
 
       const exists = stateRef.current.players.some((p) => p.id === playerId);
+      // נאפשר player_left גם אם השחקן כבר לא ברשימה (למקרה קיצון)
       if (type !== "emoji" && type !== "player_left" && !exists) return;
 
       if (type === "emoji") {
