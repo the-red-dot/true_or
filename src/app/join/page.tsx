@@ -1,414 +1,59 @@
-// truth-or-dare-ai/src/app/join/page.tsx
+// src/app/join/page.tsx
 "use client";
 
-import React, { useEffect, useRef, useState, Suspense } from "react";
+import React, { Suspense } from "react";
 import { motion } from "framer-motion";
 import {
-  Camera,
-  Loader2,
-  AlertTriangle,
-  Beer,
-  XCircle,
-  Flame,
-  RefreshCw,
-  LogOut,
+  Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, RefreshCw, LogOut
 } from "lucide-react";
-import { supabase } from "@/app/lib/supabase";
 import { useSearchParams } from "next/navigation";
-import type { RealtimeChannel, User } from "@supabase/supabase-js";
-
-// --- Broadcast event types ---
-type GameEvent = {
-  type:
-    | "emoji"
-    | "action_skip"
-    | "vote_like"
-    | "vote_dislike"
-    | "vote_shot"
-    | "trigger_spin"
-    | "update_heat"
-    | "player_left";
-  payload: any;
-  playerId: string; // players.id
-};
-
-type GameStateRow = {
-  host_id: string;
-  status: string | null;
-  current_player_id: string | null;
-  last_active_player_id: string | null;
-  heat_level: number | null;
-  challenge_text: string | null;
-  challenge_type: string | null;
-  session_id: string | null;
-};
-
-type PlayerRow = {
-  id: string;
-  host_id: string;
-  user_id: string;
-  name: string;
-  gender: "male" | "female" | "other";
-  avatar: string;
-  is_active: boolean | null;
-  session_id: string | null;
-};
+// עדכנתי את הנתיב לפי המיקום החדש שציינת
+import { usePlayerGameLogic } from "@/app/hooks/usePlayerGameLogic";
 
 function GameController() {
   const searchParams = useSearchParams();
   const hostId = searchParams.get("hostId");
 
-  // Registration State
-  const [name, setName] = useState("");
-  const [gender, setGender] = useState<"male" | "female" | "other" | "">("");
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [loading, setLoading] = useState(false);
+  // שימוש ב-Hook החדש שלנו
+  const {
+    name, setName,
+    gender, setGender,
+    imagePreview, handleImageUpload,
+    isSubmitted,
+    loading,
+    authReady,
+    authUser,
+    gameState,
+    localHeat,
+    myPlayerId,
+    handleJoin,
+    handleLeaveGame,
+    handleSpin,
+    handleHeatChange,
+    sendEmoji,
+    sendVote
+  } = usePlayerGameLogic(hostId);
 
-  // Auth / status
-  const [authUser, setAuthUser] = useState<User | null>(null);
-  const [authReady, setAuthReady] = useState(false);
+  // --- Render Functions ---
 
-  // Game Logic State
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null); // players.id
-  const [gameState, setGameState] = useState<GameStateRow | null>(null);
-  const [localHeat, setLocalHeat] = useState(1);
+  // 1. Error State
+  if (!hostId) {
+    return (
+      <div className="text-white p-10 text-center flex flex-col items-center justify-center h-screen bg-black" dir="rtl">
+        <AlertTriangle size={48} className="text-red-500 mb-4" />
+        קוד משחק שגוי
+      </div>
+    );
+  }
 
-  // refs to avoid stale closures
-  const myPlayerIdRef = useRef<string | null>(null);
-  const myUserIdRef = useRef<string | null>(null);
-  const sessionIdRef = useRef<string | null>(null);
+  const isAnonymous = (authUser as any)?.is_anonymous === true;
 
-  useEffect(() => {
-    myPlayerIdRef.current = myPlayerId;
-  }, [myPlayerId]);
-
-  // Broadcast channel (reuse instead of creating every click)
-  const broadcastRef = useRef<RealtimeChannel | null>(null);
-
-  const handleKicked = (opts?: { keepInputs?: boolean }) => {
-    if (hostId) localStorage.removeItem(`player_id_${hostId}`);
-    setMyPlayerId(null);
-    setIsSubmitted(false);
-
-    if (!opts?.keepInputs) {
-      // keep inputs if you want quicker re-join; change to true if you prefer
-      // setName("");
-      // setGender("");
-      // setImagePreview(null);
-    }
-  };
-
-  // 1) Ensure anonymous auth session on phone
-  useEffect(() => {
-    if (!hostId) return;
-
-    (async () => {
-      try {
-        const { data: s0, error: e0 } = await supabase.auth.getSession();
-        if (e0) console.error("getSession error:", e0);
-
-        if (!s0.session) {
-          const { error } = await supabase.auth.signInAnonymously();
-          if (error) throw error;
-        }
-
-        const { data: u, error: ue } = await supabase.auth.getUser();
-        if (ue) throw ue;
-
-        setAuthUser(u.user ?? null);
-        myUserIdRef.current = u.user?.id ?? null;
-      } catch (e) {
-        console.error("anonymous auth failed:", e);
-      } finally {
-        setAuthReady(true);
-      }
-    })();
-  }, [hostId]);
-
-  // 2) Load initial game state
-  useEffect(() => {
-    if (!hostId) return;
-
-    supabase
-      .from("game_states")
-      .select("*")
-      .eq("host_id", hostId)
-      .single()
-      .then(({ data, error }) => {
-        if (error) {
-          console.error("load game_states error:", error);
-          setGameState(null);
-          sessionIdRef.current = null;
-          return;
-        }
-        const gs = data as GameStateRow;
-        setGameState(gs);
-        sessionIdRef.current = gs.session_id ?? null;
-        setLocalHeat(gs.heat_level ?? 1);
-      });
-  }, [hostId]);
-
-  // 3) Setup realtime listeners (game_states + players) + broadcast channel
-  useEffect(() => {
-    if (!hostId) return;
-
-    // broadcast channel (for sending events)
-    const bc = supabase.channel(`room_${hostId}`);
-    broadcastRef.current = bc;
-    bc.subscribe();
-
-    // game state updates
-    const gameStateChannel = supabase
-      .channel(`gamestate_listener_${hostId}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "game_states", filter: `host_id=eq.${hostId}` },
-        (payload) => {
-          const next = payload.new as GameStateRow;
-          setGameState(next);
-          setLocalHeat(next.heat_level ?? 1);
-
-          // New game started (session_id changed) => kick local player back to join screen
-          const nextSession = next.session_id ?? null;
-          if (nextSession && nextSession !== sessionIdRef.current) {
-            sessionIdRef.current = nextSession;
-            if (myPlayerIdRef.current) handleKicked({ keepInputs: true });
-          }
-        }
-      )
-      .subscribe();
-
-    // player updates (handle "leave" via is_active=false, or session move)
-    const playersChannel = supabase
-      .channel(`players_listener_${hostId}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
-        (payload) => {
-          const next = payload.new as PlayerRow;
-          const myUid = myUserIdRef.current;
-          if (!myUid) return;
-
-          // if my row became inactive OR moved to other session, drop to join screen
-          if (next.user_id === myUid) {
-            const curSession = sessionIdRef.current;
-            const isWrongSession = curSession && next.session_id !== curSession;
-            const isInactive = next.is_active === false;
-            if (isWrongSession || isInactive) handleKicked({ keepInputs: true });
-          }
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "DELETE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
-        (payload) => {
-          // just in case someone deletes rows manually
-          const deletedId = (payload.old as any)?.id;
-          if (deletedId && deletedId === myPlayerIdRef.current) handleKicked({ keepInputs: true });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(gameStateChannel);
-      supabase.removeChannel(playersChannel);
-      supabase.removeChannel(bc);
-      if (broadcastRef.current === bc) broadcastRef.current = null;
-    };
-  }, [hostId]);
-
-  // 4) Try restore session (auto re-join) only if row exists & active for current session_id
-  useEffect(() => {
-    if (!hostId) return;
-    if (!authReady) return;
-    const myUid = myUserIdRef.current;
-    const sessionId = sessionIdRef.current;
-    if (!myUid || !sessionId) return;
-
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from("players")
-          .select("id,name,gender,avatar,is_active,session_id,user_id,host_id")
-          .eq("host_id", hostId)
-          .eq("user_id", myUid)
-          .eq("session_id", sessionId)
-          .maybeSingle();
-
-        if (error) {
-          console.error("restore player error:", error);
-          return;
-        }
-
-        if (data && (data as PlayerRow).is_active !== false) {
-          const p = data as PlayerRow;
-          setMyPlayerId(p.id);
-          setIsSubmitted(true);
-          setName(p.name ?? "");
-          setGender((p.gender as any) ?? "");
-          setImagePreview(p.avatar ?? null);
-          localStorage.setItem(`player_id_${hostId}`, p.id);
-        }
-      } catch (e) {
-        console.error("restore player failed:", e);
-      }
-    })();
-  }, [hostId, authReady, gameState?.session_id]);
-
-  const sendAction = async (type: GameEvent["type"], payload: any = {}) => {
-    if (!hostId || !myPlayerIdRef.current) return;
-    const ch = broadcastRef.current;
-    if (!ch) return;
-
-    await ch.send({
-      type: "broadcast",
-      event: "game_event",
-      payload: { type, payload, playerId: myPlayerIdRef.current },
-    });
-  };
-
-  const handleHeatChange = (val: number) => {
-    setLocalHeat(val);
-    sendAction("update_heat", val);
-  };
-
-  const handleSpin = () => {
-    sendAction("trigger_spin");
-  };
-
-  // Leave game: NO DELETE. Just mark inactive.
-  const handleLeaveGame = async () => {
-    if (!confirm("האם אתה בטוח שברצונך לצאת מהמשחק?")) return;
-    const pid = myPlayerIdRef.current;
-    const myUid = myUserIdRef.current;
-    if (!pid || !myUid) return;
-
-    try {
-      // 1) instant UI on TV
-      await sendAction("player_left");
-
-      // 2) mark inactive in DB (requires UPDATE RLS policy)
-      const { error } = await supabase
-        .from("players")
-        .update({ is_active: false })
-        .eq("id", pid)
-        .eq("user_id", myUid);
-
-      if (error) {
-        console.error("update is_active=false error:", error);
-        alert("לא הצלחתי לצאת (בדוק RLS ל-UPDATE עם WITH CHECK user_id=auth.uid())");
-        return;
-      }
-
-      // 3) local exit
-      handleKicked({ keepInputs: true });
-    } catch (e) {
-      console.error("leave game failed:", e);
-      alert("שגיאה ביציאה מהמשחק");
-    }
-  };
-
-  // --- Registration Logic ---
-  const compressImage = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target?.result as string;
-        img.onload = () => {
-          const canvas = document.createElement("canvas");
-          const maxWidth = 300;
-          const scaleSize = maxWidth / img.width;
-          canvas.width = maxWidth;
-          canvas.height = img.height * scaleSize;
-          const ctx = canvas.getContext("2d");
-          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL("image/jpeg", 0.7));
-        };
-      };
-    });
-  };
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const compressed = await compressImage(file);
-      setImagePreview(compressed);
-    } catch {
-      alert("שגיאה בתמונה");
-    }
-  };
-
-  const handleJoin = async () => {
-    if (!name || !gender) return alert("חסר שם או מין");
-    if (!hostId) return alert("קוד משחק שגוי");
-    const sessionId = sessionIdRef.current;
-    if (!sessionId) return alert("החדר לא מוכן עדיין (אין session_id). רענן את הטלוויזיה/הדף.");
-
-    setLoading(true);
-
-    try {
-      // Ensure session exists (anonymous)
-      const { data: s, error: se } = await supabase.auth.getSession();
-      if (se) throw se;
-      if (!s.session) {
-        const { error } = await supabase.auth.signInAnonymously();
-        if (error) throw error;
-      }
-
-      const { data: u, error: ue } = await supabase.auth.getUser();
-      if (ue || !u.user) throw ue ?? new Error("No user");
-      const userId = u.user.id;
-      myUserIdRef.current = userId;
-      setAuthUser(u.user);
-
-      // Upsert player row for this host + user, set active & attach to current session_id
-      const { data, error } = await supabase
-        .from("players")
-        .upsert(
-          [
-            {
-              host_id: hostId,
-              user_id: userId,
-              session_id: sessionId,
-              is_active: true,
-              name,
-              gender,
-              avatar: imagePreview ?? "bg-pink-500",
-            },
-          ],
-          { onConflict: "host_id,user_id" }
-        )
-        .select("id")
-        .single();
-
-      if (error) throw error;
-
-      setMyPlayerId(data.id);
-      localStorage.setItem(`player_id_${hostId}`, data.id);
-      setIsSubmitted(true);
-    } catch (e: any) {
-      console.error("join failed:", e);
-      alert(
-        `שגיאה בהצטרפות: ${e?.message ?? "RLS/INSERT/UPSERT"}\n\nאם זה RLS: ודא שיש INSERT+UPDATE פוליסיז עם WITH CHECK (user_id = auth.uid()).`
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // --- CONTROLLER VIEW ---
+  // 2. Controller View (Active Game)
   if (isSubmitted && myPlayerId && gameState) {
     const isMyTurnToPlay = gameState.current_player_id === myPlayerId;
-
     const isMyTurnToSpin =
       gameState.last_active_player_id === myPlayerId &&
       (gameState.status === "lobby" || gameState.status === "waiting_for_spin");
-
-    const isAnonymous = (authUser as any)?.is_anonymous === true;
 
     return (
       <div className="fixed inset-0 bg-gray-900 text-white flex flex-col overflow-hidden" dir="rtl">
@@ -418,7 +63,6 @@ function GameController() {
             {imagePreview && <img src={imagePreview} className="w-8 h-8 rounded-full object-cover border border-white" />}
             <span className="font-bold truncate max-w-[140px]">{name}</span>
           </div>
-
           <div className="flex gap-2 items-center">
             <div className="text-[10px] px-2 py-1 bg-green-500/20 text-green-400 rounded-full border border-green-500/30 flex items-center">
               {isAnonymous ? "מחובר כאנונימי" : "מחובר"}
@@ -431,7 +75,7 @@ function GameController() {
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col justify-center items-center p-6 relative w-full max-w-md mx-auto overflow-y-auto">
-          {/* --- SPIN CONTROLS (Only for the Wand Holder) --- */}
+          {/* SPIN CONTROLS */}
           {isMyTurnToSpin ? (
             <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full space-y-6">
               <div className="text-center">
@@ -480,7 +124,7 @@ function GameController() {
                   </div>
 
                   <button
-                    onClick={() => sendAction("action_skip")}
+                    onClick={() => sendVote("action_skip")}
                     className="w-full py-5 bg-red-500/20 hover:bg-red-500/30 text-red-200 border-2 border-red-500 rounded-2xl font-bold text-xl flex items-center justify-center gap-3 active:scale-95 transition-all"
                   >
                     <XCircle /> אני מוותר (שוט!)
@@ -494,23 +138,10 @@ function GameController() {
                 <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-700">
                   <h3 className="text-center font-bold mb-4 text-gray-300">מה דעתך על הביצוע?</h3>
                   <div className="grid grid-cols-2 gap-3">
-                    <button
-                      onClick={() => sendAction("vote_like")}
-                      className="bg-green-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-green-500 transition-colors"
-                    >
-                      👍
-                    </button>
-                    <button
-                      onClick={() => sendAction("vote_dislike")}
-                      className="bg-red-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-red-500 transition-colors"
-                    >
-                      👎
-                    </button>
+                    <button onClick={() => sendVote("vote_like")} className="bg-green-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-green-500 transition-colors">👍</button>
+                    <button onClick={() => sendVote("vote_dislike")} className="bg-red-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-red-500 transition-colors">👎</button>
                   </div>
-                  <button
-                    onClick={() => sendAction("vote_shot")}
-                    className="w-full mt-3 bg-orange-600/80 p-3 rounded-xl font-bold flex justify-center items-center gap-2 active:scale-95 hover:bg-orange-500 transition-colors"
-                  >
+                  <button onClick={() => sendVote("vote_shot")} className="w-full mt-3 bg-orange-600/80 p-3 rounded-xl font-bold flex justify-center items-center gap-2 active:scale-95 hover:bg-orange-500 transition-colors">
                     <Beer size={18} /> כולם שותים!
                   </button>
                 </div>
@@ -521,15 +152,10 @@ function GameController() {
                 <div className="text-center text-gray-400 animate-pulse">
                   {gameState.status === "spinning" && <div className="text-6xl animate-spin mb-4">🎲</div>}
                   <p className="text-xl font-bold">
-                    {gameState.status === "lobby"
-                      ? "ממתינים למארח..."
-                      : gameState.status === "waiting_for_spin"
-                      ? "ממתינים לסיבוב..."
-                      : gameState.status === "spinning"
-                      ? "מגריל..."
-                      : gameState.status === "penalty"
-                      ? "שוט!"
-                      : "המשחק רץ בטלוויזיה..."}
+                    {gameState.status === "lobby" ? "ממתינים למארח..." :
+                     gameState.status === "waiting_for_spin" ? "ממתינים לסיבוב..." :
+                     gameState.status === "spinning" ? "מגריל..." :
+                     gameState.status === "penalty" ? "שוט!" : "המשחק רץ בטלוויזיה..."}
                   </p>
                 </div>
               )}
@@ -545,7 +171,7 @@ function GameController() {
               (item, idx) => (
                 <button
                   key={idx}
-                  onClick={() => sendAction("emoji", item.icon)}
+                  onClick={() => sendEmoji(item.icon)}
                   className="bg-gray-800 p-3 rounded-2xl text-2xl active:scale-75 transition-transform shadow-md border border-gray-700 flex-shrink-0 hover:bg-gray-700"
                 >
                   {item.icon}
@@ -558,18 +184,7 @@ function GameController() {
     );
   }
 
-  // --- Registration ---
-  if (!hostId) {
-    return (
-      <div className="text-white p-10 text-center flex flex-col items-center justify-center h-screen">
-        <AlertTriangle size={48} className="text-red-500 mb-4" />
-        קוד משחק שגוי
-      </div>
-    );
-  }
-
-  const isAnonymous = (authUser as any)?.is_anonymous === true;
-
+  // 3. Registration View
   return (
     <div className="min-h-[100dvh] bg-black text-white p-6 flex flex-col items-center justify-center text-center" dir="rtl">
       <div className="w-full max-w-sm space-y-6">
@@ -616,7 +231,7 @@ function GameController() {
 
         {!gameState?.session_id && (
           <div className="text-xs text-yellow-300/80 bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3">
-            אין session_id לחדר עדיין. ודא שבטלוויזיה נוצר row ב-<b>game_states</b> עבור המארח, ושבסיום משחק אתה מייצר session_id חדש.
+            אין session_id לחדר עדיין. המארח צריך להתחבר קודם.
           </div>
         )}
       </div>
