@@ -1,5 +1,4 @@
-// truth-or-dare-ai\src\app\api\generate\route.ts
-
+// src/app/api/generate/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -11,22 +10,22 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { playerName, playerGender, heatLevel, type, previousChallenges } = body;
+    const { playerName, playerGender, heatLevel, type, previousChallenges, players } = body;
 
-    // נרמול מגדר (התאמה למבנה בדאטה בייס)
+    // נרמול מגדר
     let dbGender = 'neutral';
     if (playerGender === 'male') dbGender = 'male';
     if (playerGender === 'female') dbGender = 'female';
 
-    // טווח רמות: גמישות של +/- 1 כדי למצוא יותר תוצאות
+    // טווח רמות
     let minHeat = heatLevel === 1 ? 1 : heatLevel - 1;
     let maxHeat = heatLevel === 10 ? 10 : heatLevel + 1;
 
-    // שליפת משימות רלוונטיות מה-DB
+    // שליפת משימות רלוונטיות
     const { data: tasks, error } = await supabase
       .from('game_tasks')
       .select('*')
-      .eq('type', type) // 'אמת' או 'חובה'
+      .eq('type', type)
       .gte('heat_level', minHeat)
       .lte('heat_level', maxHeat)
       .or(`gender.eq.${dbGender},gender.eq.neutral`);
@@ -50,19 +49,43 @@ export async function POST(req: Request) {
         });
     }
 
-    // סינון משימות שכבר היו (לפי הטקסט שנשלח מהקלאיינט)
+    // סינון משימות שכבר היו
     const availableTasks = tasks.filter((t: any) => 
         !previousChallenges.some((prev: string) => prev === t.content)
     );
 
-    // אם סיימנו את כל המשימות, נאפס ונבחר מכל המאגר
     const finalPool = availableTasks.length > 0 ? availableTasks : tasks;
-
-    // בחירה רנדומלית
     const randomTask = finalPool[Math.floor(Math.random() * finalPool.length)];
+    
+    let content = randomTask.content;
+
+    // --- לוגיקת בחירת קורבן (Victim Logic) ---
+    if (content.includes("[chosenName]")) {
+        let victims: any[] = [];
+        
+        // סינון לפי מגדר הפוך
+        if (playerGender === 'male') {
+            victims = players.filter((p: any) => p.gender === 'female');
+        } else if (playerGender === 'female') {
+            victims = players.filter((p: any) => p.gender === 'male');
+        }
+
+        // גיבוי: אם אין מהמין השני (או אם השחקן נייטרלי/אחר), קח כל אחד שהוא לא השחקן עצמו
+        if (victims.length === 0) {
+            victims = players.filter((p: any) => p.name !== playerName);
+        }
+
+        if (victims.length > 0) {
+            const chosenVictim = victims[Math.floor(Math.random() * victims.length)];
+            content = content.replace("[chosenName]", chosenVictim.name);
+        } else {
+            // מקרה קיצון: משחק לבד
+            content = content.replace("[chosenName]", "עצמך (אין עוד שחקנים)");
+        }
+    }
 
     return NextResponse.json({
-      content: randomTask.content,
+      content: content,
       spiciness: randomTask.heat_level,
       themeColor: randomTask.theme_color || '#ec4899',
       usedModel: "Supabase DB"
