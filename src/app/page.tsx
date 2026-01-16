@@ -246,7 +246,8 @@ export default function TruthOrDareGame() {
                 </div>
                 {/* -------------------------------------------------------------------------- */}
 
-                <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-12 rounded-[3rem] text-center shadow-2xl relative overflow-hidden pt-20">
+                {/* הגדלתי את ה-padding-top ל-pt-32 כדי ליצור רווח ברור בין האווטר לתגית */}
+                <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-12 rounded-[3rem] text-center shadow-2xl relative overflow-hidden pt-32">
                   <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-pink-500 to-cyan-500" />
                   <div className="flex justify-center mb-6">
                     <span
@@ -295,25 +296,7 @@ export default function TruthOrDareGame() {
                 </div>
               </motion.div>
 
-              <div className="flex justify-center gap-4 mt-8 flex-wrap px-10">
-                {players
-                  .filter((p) => p.id !== selectedPlayer.id)
-                  .map((p) => (
-                    <div
-                      key={p.id}
-                      className="relative w-20 h-20 rounded-full border-2 border-white/20 opacity-70 grayscale"
-                    >
-                      {p.avatar.startsWith("bg-") ? (
-                        <div className={`w-full h-full ${p.avatar}`} />
-                      ) : (
-                        <img
-                          src={p.avatar}
-                          className="w-full h-full object-cover rounded-full"
-                        />
-                      )}
-                    </div>
-                  ))}
-              </div>
+              {/* הסרתי את רשימת השחקנים למטה כדי לנקות את המסך כפי שביקשת */}
             </div>
           )}
 
