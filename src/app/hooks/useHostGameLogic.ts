@@ -71,11 +71,11 @@ export const useHostGameLogic = (
     return p?.session_id === sid && p?.is_active === true;
   };
 
-  // State Ref to avoid stale closures in listeners
-  const stateRef = useRef({ players, lastActivePlayer, gameState, sessionId });
+  // State Ref
+  const stateRef = useRef({ players, lastActivePlayer, gameState, sessionId, selectedPlayer });
   useEffect(() => {
-    stateRef.current = { players, lastActivePlayer, gameState, sessionId };
-  }, [players, lastActivePlayer, gameState, sessionId]);
+    stateRef.current = { players, lastActivePlayer, gameState, sessionId, selectedPlayer };
+  }, [players, lastActivePlayer, gameState, sessionId, selectedPlayer]);
 
   // --- Sync Logic ---
   const syncGameStateToDB = async (
@@ -89,6 +89,7 @@ export const useHostGameLogic = (
     let activeControllerId =
       forceControllerId !== undefined ? forceControllerId : lastActivePlayer?.id;
 
+    // אם אין בקר, ננסה לקחת את הראשון ברשימה
     if (!activeControllerId && players.length > 0) {
       activeControllerId = players[0].id;
     }
@@ -108,54 +109,39 @@ export const useHostGameLogic = (
     });
   };
 
-  // Turn management
+  // --- Turn Management & Player Leave Handling ---
   useEffect(() => {
-    if (players.length === 0) {
-      if (lastActivePlayer !== null) setLastActivePlayer(null);
-      return;
+    // אם אין מספיק שחקנים והמשחק לא בלובי, נחזיר ללובי
+    if (players.length < 2 && gameState !== "lobby") {
+       // אם נשאר שחקן אחד או 0, אי אפשר לשחק
+       if (players.length === 0) {
+          if (lastActivePlayer !== null) setLastActivePlayer(null);
+       }
+       // אופציונלי: להחזיר ללובי אם יש פחות מ-2 שחקנים
+       // setGameState("lobby"); 
+       // syncGameStateToDB("lobby", null, null, players[0]?.id);
+       return;
     }
 
-    const activePlayerStillHere =
+    // בדיקה: האם השחקן ש"מחזיק בשרביט" (lastActivePlayer) עדיין במשחק?
+    const controllerStillHere =
       lastActivePlayer && players.find((p) => p.id === lastActivePlayer.id);
 
-    if (!activePlayerStillHere) {
+    if (!controllerStillHere && players.length > 0) {
+      // אם הוא יצא, נעביר את השרביט לשחקן הראשון ברשימה
       const newController = players[0];
       setLastActivePlayer(newController);
+      
+      // עדכון DB בשרביט החדש
       syncGameStateToDB(gameState, selectedPlayer?.id, currentChallenge, newController.id);
     } else {
+      // עדכון שגרתי
       if (gameState === "lobby" || gameState === "waiting_for_spin") {
         syncGameStateToDB(gameState, selectedPlayer?.id, currentChallenge, lastActivePlayer?.id);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [players.length, gameState]);
-
-  // Sync state changes
-  useEffect(() => {
-    if (authUser && sessionId) {
-      syncGameStateToDB(gameState, selectedPlayer?.id, currentChallenge);
-    }
-    if (gameState !== "challenge") {
-      setVotes({ likes: 0, dislikes: 0, shots: 0 });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameState, selectedPlayer, currentChallenge, heatLevel, sessionId]);
-
-  // URL setup
-  useEffect(() => {
-    if (authUser && typeof window !== "undefined") {
-      setJoinUrl(`${window.location.origin}/join?hostId=${authUser.id}`);
-    }
-  }, [authUser]);
-
-  // Auto votes logic
-  useEffect(() => {
-    if (gameState !== "challenge") return;
-    const voters = Math.max(1, players.length - 1);
-    if (votes.likes > voters * 0.5) handleDone();
-    else if (votes.dislikes > voters * 0.5) handleSkip();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [votes, players.length, gameState]);
+  }, [players.length, gameState]); // רץ בכל שינוי במספר השחקנים
 
   // --- Realtime Setup ---
   useEffect(() => {
@@ -170,11 +156,17 @@ export const useHostGameLogic = (
         .single();
 
       if (gs.data?.session_id) {
-        setSessionId(gs.data.session_id);
-        if (gs.data.heat_level) setHeatLevel(gs.data.heat_level);
-        return gs.data.session_id as string;
+        const data = gs.data;
+        setSessionId(data.session_id);
+        if (data.heat_level) setHeatLevel(data.heat_level);
+        if (data.status) setGameState(data.status as any); // שחזור סטטוס
+        if (data.challenge_type) setChallengeType(data.challenge_type as any);
+        if (data.challenge_text) setCurrentChallenge({ content: data.challenge_text, spiciness: data.heat_level, themeColor: "", usedModel: "Restored" });
+        
+        return { sid: data.session_id, data };
       }
 
+      // יצירת חדש
       const created = await supabase
         .from("game_states")
         .upsert({
@@ -184,13 +176,12 @@ export const useHostGameLogic = (
           session_id: genSessionId(),
           updated_at: new Date().toISOString(),
         })
-        .select("session_id, heat_level, status")
+        .select()
         .single();
 
       const sid = created.data?.session_id ?? null;
       setSessionId(sid);
-      if (created.data?.heat_level) setHeatLevel(created.data.heat_level);
-      return sid as string;
+      return { sid, data: created.data };
     };
 
     const loadPlayersForSession = async (hostId: string, sid: string) => {
@@ -202,15 +193,33 @@ export const useHostGameLogic = (
         .eq("is_active", true)
         .order("created_at", { ascending: true });
 
-      if (data) setPlayers(data as Player[]);
-      else setPlayers([]);
+      if (data) return data as Player[];
+      return [];
     };
 
     const setupRealtime = async (hostId: string) => {
-      const sid = await loadOrCreateGameState(hostId);
-      if (sid) await loadPlayersForSession(hostId, sid);
+      const { sid, data: gsData } = await loadOrCreateGameState(hostId);
+      if (!sid) return;
 
-      // Listen to game_states updates
+      const loadedPlayers = await loadPlayersForSession(hostId, sid);
+      setPlayers(loadedPlayers);
+
+      // שחזור: מיהו השחקן הנבחר ומיהו המפעיל?
+      if (gsData) {
+          if (gsData.current_player_id) {
+              const selected = loadedPlayers.find(p => p.id === gsData.current_player_id);
+              if (selected) setSelectedPlayer(selected);
+          }
+          if (gsData.last_active_player_id) {
+              const active = loadedPlayers.find(p => p.id === gsData.last_active_player_id);
+              if (active) setLastActivePlayer(active);
+              else if (loadedPlayers.length > 0) setLastActivePlayer(loadedPlayers[0]);
+          } else if (loadedPlayers.length > 0) {
+              setLastActivePlayer(loadedPlayers[0]);
+          }
+      }
+
+      // Listen to game_states updates (SYNC)
       gsChannel = supabase
         .channel(`gamestate_host_${hostId}`)
         .on(
@@ -220,6 +229,7 @@ export const useHostGameLogic = (
             const next = payload.new as any;
             const nextSid: string | null = next?.session_id ?? null;
 
+            // אם ה-Session השתנה (משחק חדש)
             if (nextSid && nextSid !== stateRef.current.sessionId) {
               setSessionId(nextSid);
               setPlayers([]);
@@ -231,13 +241,23 @@ export const useHostGameLogic = (
               setHeatLevel(next?.heat_level ?? 1);
               return;
             }
-            if (typeof next?.heat_level === "number") setHeatLevel(next.heat_level);
+
+            // עדכונים שוטפים
+            if (next.status) setGameState(next.status);
+            if (typeof next.heat_level === "number") setHeatLevel(next.heat_level);
+            
+            // ** תיקון קריטי: עדכון שחקן נבחר בזמן אמת אם השתנה **
+            if (next.current_player_id) {
+                const p = stateRef.current.players.find(p => p.id === next.current_player_id);
+                if (p && p.id !== stateRef.current.selectedPlayer?.id) {
+                    setSelectedPlayer(p);
+                }
+            }
           }
         )
         .subscribe();
 
       // Listen to players AND broadcasts
-      // TIKUN: Changed from `room_${hostId}_players` to `room_${hostId}` to match player's channel
       channel = supabase
         .channel(`room_${hostId}`)
         .on(
@@ -246,11 +266,9 @@ export const useHostGameLogic = (
           (payload) => {
             const np = payload.new as any;
             const sidNow = stateRef.current.sessionId;
-            
             if (isActiveRow(np, sidNow)) {
                  setPlayers((prev) => {
-                    const exists = prev.some((p) => p.id === np.id);
-                    if (exists) return prev;
+                    if (prev.some(p => p.id === np.id)) return prev;
                     return [...prev, np];
                  });
             }
@@ -262,12 +280,10 @@ export const useHostGameLogic = (
           (payload) => {
             const up = payload.new as any;
             const sidNow = stateRef.current.sessionId;
-
             if (!isActiveRow(up, sidNow)) {
               setPlayers((prev) => prev.filter((p) => p.id !== up.id));
               return;
             }
-
             setPlayers((prev) => {
               const exists = prev.some((p) => p.id === up.id);
               return exists ? prev.map((p) => (p.id === up.id ? up : p)) : [...prev, up];
@@ -279,43 +295,27 @@ export const useHostGameLogic = (
           { event: "DELETE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
           (payload) => {
              const deletedId = (payload.old as any)?.id;
-             if (deletedId) {
-                setPlayers((prev) => prev.filter((p) => p.id !== deletedId));
-             }
+             if (deletedId) setPlayers((prev) => prev.filter((p) => p.id !== deletedId));
           }
         )
-        // האזנה לאירועי Broadcast (כמו אימוג'ים)
         .on("broadcast", { event: "game_event" }, (event) => handleGameEvent(event.payload))
         .subscribe((status) => setIsConnected(status === "SUBSCRIBED"));
     };
 
     const handleGameEvent = (data: any) => {
       const { type, payload, playerId } = data;
-      const allowedTypes = new Set([
-        "emoji", "action_skip", "vote_like", "vote_dislike", 
-        "vote_shot", "trigger_spin", "update_heat", "player_left"
-      ]);
-      if (!allowedTypes.has(type)) return;
-
-      // עבור אימוג'ים, אנחנו פחות קשוחים בבדיקה אם השחקן קיים ברשימה
-      // (לפעמים ה-Broadcast מגיע לפני שה-DB מתעדכן)
-      const exists = stateRef.current.players.some((p) => p.id === playerId);
-      if (type !== "emoji" && type !== "player_left" && !exists) return;
-
+      // ... same logic as before for emojis ...
       if (type === "emoji") {
         const id = Math.random().toString(36);
-        const randomX = Math.random() * 80 + 10; // מיקום רנדומלי לרוחב המסך
+        const randomX = Math.random() * 80 + 10;
         setReactions((prev) => [...prev, { id, emoji: payload, playerId, x: randomX }]);
-        
-        // ניקוי האימוג'י אחרי שהאנימציה מסתיימת
         setTimeout(() => setReactions((prev) => prev.filter((r) => r.id !== id)), 4000);
       }
-
+      // ... rest of events ...
       if (type === "update_heat") setHeatLevel(payload);
       if (type === "trigger_spin") spinTheWheel();
       if (type === "action_skip") handleSkip();
       if (type === "player_left") setPlayers((prev) => prev.filter((p) => p.id !== playerId));
-
       if (type === "vote_like") setVotes((v) => ({ ...v, likes: v.likes + 1 }));
       if (type === "vote_dislike") setVotes((v) => ({ ...v, dislikes: v.dislikes + 1 }));
       if (type === "vote_shot") {
@@ -347,8 +347,33 @@ export const useHostGameLogic = (
       if (channel) supabase.removeChannel(channel);
       if (gsChannel) supabase.removeChannel(gsChannel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // Init only
+
+  // --- Game Flow & Sync Updates ---
+  // Sync state changes to DB only if I am the Host and we have a session
+  useEffect(() => {
+    if (authUser && sessionId) {
+      syncGameStateToDB(gameState, selectedPlayer?.id, currentChallenge);
+    }
+    if (gameState !== "challenge") {
+      setVotes({ likes: 0, dislikes: 0, shots: 0 });
+    }
+  }, [gameState, selectedPlayer, currentChallenge, heatLevel, sessionId]);
+
+  // URL setup
+  useEffect(() => {
+    if (authUser && typeof window !== "undefined") {
+      setJoinUrl(`${window.location.origin}/join?hostId=${authUser.id}`);
+    }
+  }, [authUser]);
+
+  // Auto votes
+  useEffect(() => {
+    if (gameState !== "challenge") return;
+    const voters = Math.max(1, players.length - 1);
+    if (votes.likes > voters * 0.5) handleDone();
+    else if (votes.dislikes > voters * 0.5) handleSkip();
+  }, [votes, players.length, gameState]);
 
   // --- Actions ---
   const spinTheWheel = () => {
@@ -366,7 +391,6 @@ export const useHostGameLogic = (
     }, 3000);
   };
 
-  // Reveal logic
   useEffect(() => {
     if (gameState === "spotlight") {
       const t = setTimeout(() => setGameState("revealing"), 3000);
@@ -374,7 +398,6 @@ export const useHostGameLogic = (
     }
   }, [gameState]);
 
-  // AI Generation
   useEffect(() => {
     if (gameState === "revealing" && selectedPlayer && challengeType && authUser) {
       setLoadingAI(true);
@@ -396,8 +419,7 @@ export const useHostGameLogic = (
         .catch(() => setGameState("challenge"))
         .finally(() => setLoadingAI(false));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameState]);
+  }, [gameState]); // Removed deps to avoid double fetch, relies on gameState change
 
   const handleDone = () => {
     confetti({ particleCount: 200, spread: 120 });
@@ -429,33 +451,24 @@ export const useHostGameLogic = (
   };
 
   const handleManualRefresh = async () => {
-    if (!authUser) return;
-    let sid = sessionId;
-    if (!sid) {
-      const gs = await supabase.from("game_states").select("session_id").eq("host_id", authUser.id).single();
-      sid = (gs.data?.session_id as string) ?? null;
-      setSessionId(sid);
-    }
-    if (!sid) return;
+    if (!authUser || !sessionId) return;
     const { data } = await supabase
       .from("players")
       .select("*")
       .eq("host_id", authUser.id)
-      .eq("session_id", sid)
+      .eq("session_id", sessionId)
       .eq("is_active", true)
       .order("created_at", { ascending: true });
 
     if (data) {
       setPlayers(data as Player[]);
-      if (!lastActivePlayer && data.length > 0) {
-        setLastActivePlayer(data[0] as Player);
-      }
+      if (!lastActivePlayer && data.length > 0) setLastActivePlayer(data[0] as Player);
     }
   };
 
   const endGame = async (askConfirm = true) => {
     if (!authUser) return;
-    if (askConfirm && !confirm("לסיים משחק ולהתחיל חדש (0 שחקנים, בלי למחוק DB)?")) return;
+    if (askConfirm && !confirm("לסיים משחק ולהתחיל חדש?")) return;
     const newSid = genSessionId();
     await supabase.from("game_states").upsert({
       host_id: authUser.id,
@@ -479,13 +492,10 @@ export const useHostGameLogic = (
   };
 
   const handleLogout = async () => {
-    if (confirm("האם אתה בטוח שברצונך להתנתק?")) {
-      await supabase.auth.signOut();
-    }
+    if (confirm("להתנתק?")) await supabase.auth.signOut();
   };
 
   return {
-    // State
     gameState,
     players,
     heatLevel,
@@ -499,11 +509,7 @@ export const useHostGameLogic = (
     reactions,
     votes,
     shotVoteMode,
-    
-    // Setters (if needed directly)
     setHeatLevel,
-
-    // Actions
     spinTheWheel,
     handleManualRefresh,
     handleLogout,

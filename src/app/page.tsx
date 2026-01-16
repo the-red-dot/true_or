@@ -10,7 +10,6 @@ import {
 import QRCode from "react-qr-code";
 import Link from "next/link";
 
-// Hooks - ודא שהם נמצאים בתיקייה הזו אצלך
 import { useHostGameLogic } from "@/app/hooks/useHostGameLogic";
 import { useGameSounds } from "@/app/hooks/useGameSounds";
 
@@ -73,17 +72,16 @@ export default function TruthOrDareGame() {
         </div>
       )}
 
-      {/* Global Emojis Overlay - FIXED: Added dir="ltr" and changed positioning logic */}
+      {/* Global Emojis Overlay (LTR for proper X positioning) */}
       <div className="fixed inset-0 pointer-events-none z-[100] overflow-hidden" dir="ltr">
         <AnimatePresence>
           {reactions.map((r) => (
             <motion.div
               key={r.id}
-              // שינוי לוגיקה: משתמשים ב-left לפי אחוזים, ומאפסים את ה-x כדי למרכז את האימוג'י עצמו
               initial={{ opacity: 0, scale: 0.5, y: "100vh", x: "-50%" }}
               animate={{ opacity: 1, scale: [1, 1.5, 1], y: "-20vh" }}
               exit={{ opacity: 0 }}
-              style={{ left: `${r.x}%` }} // מיקום אבסולוטי באחוזים מהשמאל
+              style={{ left: `${r.x}%` }}
               transition={{ duration: 4, ease: "easeOut" }}
               className="absolute text-7xl md:text-8xl drop-shadow-[0_0_15px_rgba(0,0,0,0.8)]"
             >
@@ -95,7 +93,6 @@ export default function TruthOrDareGame() {
 
       {/* Main Game Area */}
       <div className="flex-1 flex flex-col items-center justify-center relative z-10 p-10 h-full">
-        {/* Disconnected State */}
         {!authUser && (
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
@@ -118,7 +115,6 @@ export default function TruthOrDareGame() {
           </motion.div>
         )}
 
-        {/* Lobby / Waiting */}
         {authUser && (gameState === "lobby" || gameState === "waiting_for_spin") && (
           <div className="flex flex-col items-center w-full max-w-6xl h-full justify-center">
             <h1 className="text-8xl md:text-9xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 drop-shadow-[0_0_30px_rgba(236,72,153,0.5)] mb-12 tracking-tighter">
@@ -167,9 +163,8 @@ export default function TruthOrDareGame() {
               })}
             </div>
 
-            {/* Controls */}
             <div className="mt-12 bg-white/5 backdrop-blur-xl p-4 rounded-2xl border border-white/10 flex items-center gap-6">
-              {gameState === "lobby" && players.length >= 2 && (
+              {players.length >= 2 && (
                 <button
                   onClick={spinTheWheel}
                   className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-500 rounded-xl font-bold flex items-center gap-2 hover:scale-105 transition-transform shadow-lg"
@@ -200,7 +195,6 @@ export default function TruthOrDareGame() {
           </div>
         )}
 
-        {/* Spinning Wheel */}
         {authUser && gameState === "spinning" && (
           <div className="relative">
             <motion.div
@@ -213,7 +207,6 @@ export default function TruthOrDareGame() {
           </div>
         )}
 
-        {/* Spotlight */}
         {authUser && gameState === "spotlight" && selectedPlayer && (
           <motion.div
             initial={{ scale: 0 }}
@@ -232,7 +225,6 @@ export default function TruthOrDareGame() {
           </motion.div>
         )}
 
-        {/* Challenge Card */}
         {authUser &&
           (gameState === "challenge" || gameState === "revealing") &&
           currentChallenge &&
@@ -243,7 +235,18 @@ export default function TruthOrDareGame() {
                 animate={{ y: 0, opacity: 1 }}
                 className="w-full max-w-5xl px-4 relative z-20"
               >
-                <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-12 rounded-[3rem] text-center shadow-2xl relative overflow-hidden">
+                {/* -------------------- הוספת האווטר של השחקן הנבחר כאן -------------------- */}
+                <div className="absolute -top-16 left-1/2 -translate-x-1/2 z-30">
+                   <div className="w-32 h-32 rounded-full border-4 border-white shadow-lg overflow-hidden bg-black">
+                      <img src={selectedPlayer.avatar} className="w-full h-full object-cover" alt="Active Player" />
+                   </div>
+                   <div className="text-center mt-1 bg-black/60 px-3 rounded-full text-white font-bold text-sm backdrop-blur-sm">
+                      {selectedPlayer.name}
+                   </div>
+                </div>
+                {/* -------------------------------------------------------------------------- */}
+
+                <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-12 rounded-[3rem] text-center shadow-2xl relative overflow-hidden pt-20">
                   <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-pink-500 to-cyan-500" />
                   <div className="flex justify-center mb-6">
                     <span
@@ -314,7 +317,6 @@ export default function TruthOrDareGame() {
             </div>
           )}
 
-        {/* Penalty Screen */}
         <AnimatePresence>
           {gameState === "penalty" && (
             <motion.div
@@ -349,7 +351,6 @@ export default function TruthOrDareGame() {
           )}
         </AnimatePresence>
 
-        {/* Group Shot Screen */}
         <AnimatePresence>
           {shotVoteMode && (
             <motion.div
@@ -367,7 +368,6 @@ export default function TruthOrDareGame() {
           )}
         </AnimatePresence>
 
-        {/* Join QR Code */}
         {authUser && joinUrl && (
           <div
             className={`absolute z-30 transition-all duration-500 bg-white p-2 rounded-xl shadow-2xl ${
