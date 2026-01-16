@@ -72,6 +72,34 @@ export default function TruthOrDareGame() {
   });
   const [shotVoteMode, setShotVoteMode] = useState(false);
 
+  // --- Helper: call server route that uses SERVICE_ROLE (bypasses RLS) ---
+  const callHostGameApi = async (body: any) => {
+    const {
+      data: { session },
+      error: sessionErr,
+    } = await supabase.auth.getSession();
+
+    if (sessionErr) throw sessionErr;
+    const token = session?.access_token;
+    if (!token) throw new Error("NO_SESSION");
+
+    const res = await fetch("/api/host/game", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      const details = json?.details || json?.error || "UNKNOWN";
+      throw new Error(details);
+    }
+    return json;
+  };
+
   // שמירת רפרנס לסטייט כדי להשתמש בתוך ה-Listener של ה-Realtime בלי stale closures
   const stateRef = useRef({ players, lastActivePlayer, gameState });
   useEffect(() => {
@@ -220,16 +248,10 @@ export default function TruthOrDareGame() {
         // optimistic UI
         setPlayers((prev) => prev.filter((p) => p.id !== playerId));
 
-        // host fallback delete (if phone couldn't delete due to network)
+        // IMPORTANT: server-side delete (bypass RLS) so player won't "come back" on refresh
         if (authUser) {
-          supabase
-            .from("players")
-            .delete()
-            .eq("host_id", authUser.id)
-            .eq("id", playerId)
-            .then(({ error }) => {
-              if (error) console.error("Host fallback delete failed:", error);
-            });
+          callHostGameApi({ op: "delete_player", playerId })
+            .catch((e) => console.error("Server delete_player failed:", e));
         }
       }
 
@@ -376,36 +398,25 @@ export default function TruthOrDareGame() {
     }
   };
 
-  // Reset game (do not clear UI if DB delete fails)
+  // Reset game (server-side, bypass RLS)
   const resetGame = async (askConfirm = true) => {
     if (!authUser) return;
     if (askConfirm && !confirm("בטוח שאתה רוצה לאפס את המשחק ולמחוק את כל השחקנים?")) return;
 
-    const { error: playersError } = await supabase.from("players").delete().eq("host_id", authUser.id);
-    if (playersError) {
-      console.error("שגיאה במחיקת שחקנים:", playersError);
-      alert("מחיקת שחקנים נכשלה (בדוק RLS / חיבור).");
-      return; // IMPORTANT: don't clear UI
+    try {
+      await callHostGameApi({ op: "reset_game" });
+
+      // Update local UI only after server success
+      setPlayers([]);
+      setGameState("lobby");
+      setLastActivePlayer(null);
+      setSelectedPlayer(null);
+      setCurrentChallenge(null);
+      setHeatLevel(1);
+    } catch (e) {
+      console.error("reset_game failed:", e);
+      alert("מחיקת שחקנים נכשלה (בדוק ENV של SERVICE_ROLE / הרשאות שרת).");
     }
-
-    const { error: historyError } = await supabase.from("challenge_history").delete().eq("host_id", authUser.id);
-    if (historyError) console.error("שגיאה במחיקת היסטוריה:", historyError);
-
-    await supabase.from("game_states").upsert({
-      host_id: authUser.id,
-      status: "lobby",
-      current_player_id: null,
-      last_active_player_id: null,
-      challenge_text: null,
-      challenge_type: null,
-      updated_at: new Date().toISOString(),
-    });
-
-    setPlayers([]);
-    setGameState("lobby");
-    setLastActivePlayer(null);
-    setSelectedPlayer(null);
-    setCurrentChallenge(null);
   };
 
   const handleHeatChange = (e: React.ChangeEvent<HTMLInputElement>) => {
