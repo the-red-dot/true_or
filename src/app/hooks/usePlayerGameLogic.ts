@@ -122,26 +122,25 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       });
   }, [hostId]);
 
-  // 3. Realtime Listeners
+  // 3. Realtime Listeners (Unified)
   useEffect(() => {
     if (!hostId) return;
 
-    // ערוץ ייעודי לשידורים (Broadcast) - חשוב שהשם יהיה זהה למה שהמארח מאזין לו
-    // הוספנו קונפיגורציה מפורשת כדי לוודא שהשידור מופעל
+    // We create one broadcast channel for interactions
     const bc = supabase.channel(`room_${hostId}`, {
       config: {
         broadcast: { self: false },
       },
     });
-    
+
     bc.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         broadcastRef.current = bc;
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error("Broadcast channel error");
+        console.log("Broadcast channel connected for player");
       }
     });
 
+    // Separate channels for DB changes to avoid filter conflicts
     const gameStateChannel = supabase
       .channel(`gamestate_listener_${hostId}`)
       .on(
@@ -188,9 +187,13 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       .subscribe();
 
     return () => {
+      // Cleanup
+      if (broadcastRef.current) {
+        supabase.removeChannel(broadcastRef.current);
+        broadcastRef.current = null;
+      }
       supabase.removeChannel(gameStateChannel);
       supabase.removeChannel(playersChannel);
-      supabase.removeChannel(bc);
     };
   }, [hostId]);
 
@@ -223,17 +226,21 @@ export const usePlayerGameLogic = (hostId: string | null) => {
 
   // --- Actions ---
   const sendAction = async (type: string, payload: any = {}) => {
-    // בדיקה מחמירה יותר לפני שליחה
-    if (!hostId || !myPlayerIdRef.current) return;
+    if (!hostId || !myPlayerIdRef.current) {
+        console.warn("Cannot send action: Missing hostId or playerId");
+        return;
+    }
     
-    // אם הערוץ לא קיים ברפרנס, ננסה להשתמש בחדש זמנית או פשוט נצא (אבל ה-useEffect אמור לדאוג לזה)
-    if (!broadcastRef.current) {
-        console.warn("Broadcast channel not ready yet");
+    const channel = broadcastRef.current;
+    if (!channel) {
+        console.warn("Broadcast channel not ready yet. Retrying in 500ms...");
+        // Fallback retry
+        setTimeout(() => sendAction(type, payload), 500);
         return;
     }
 
     try {
-      await broadcastRef.current.send({
+      await channel.send({
         type: "broadcast",
         event: "game_event",
         payload: { type, payload, playerId: myPlayerIdRef.current },
