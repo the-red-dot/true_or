@@ -1,557 +1,44 @@
-// truth-or-dare-ai\src\app\page.tsx
-
+// src/app/page.tsx
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Flame,
-  Trash2,
-  LogOut,
-  User as UserIcon,
-  WifiOff,
-  RefreshCw,
-  Cpu,
-  Beer,
-  ThumbsUp,
-  ThumbsDown,
-  LogIn,
-  Play,
+  Flame, Trash2, LogOut, User as UserIcon, WifiOff, RefreshCw,
+  Cpu, Beer, ThumbsUp, ThumbsDown, LogIn, Play
 } from "lucide-react";
-import confetti from "canvas-confetti";
 import QRCode from "react-qr-code";
-import { supabase } from "@/app/lib/supabase";
 import Link from "next/link";
-import { User } from "@supabase/supabase-js";
-import { RealtimeChannel } from "@supabase/supabase-js";
 
-// --- Types ---
-type Player = {
-  id: string;
-  created_at?: string;
-  name: string;
-  gender: "male" | "female" | "other";
-  avatar: string;
-  host_id: string;
-  user_id: string;
-  // NEW (DB fields)
-  session_id?: string | null;
-  is_active?: boolean | null;
-};
-
-type Challenge = {
-  content: string;
-  spiciness: number;
-  themeColor: string;
-  usedModel?: string;
-};
-
-type Reaction = { id: string; emoji: string; playerId: string; x: number };
+// Hooks - ודא שהם נמצאים בתיקייה הזו אצלך
+import { useHostGameLogic } from "@/app/hooks/useHostGameLogic";
+import { useGameSounds } from "@/app/hooks/useGameSounds";
 
 export default function TruthOrDareGame() {
-  // --- State ---
-  const [gameState, setGameState] = useState<
-    "lobby" | "waiting_for_spin" | "spinning" | "spotlight" | "revealing" | "challenge" | "penalty"
-  >("lobby");
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [heatLevel, setHeatLevel] = useState<number>(1);
-  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
-  const [lastActivePlayer, setLastActivePlayer] = useState<Player | null>(null); // השחקן השולט כרגע
-  const [challengeType, setChallengeType] = useState<"אמת" | "חובה" | null>(null);
-  const [currentChallenge, setCurrentChallenge] = useState<Challenge | null>(null);
-  const [loadingAI, setLoadingAI] = useState(false);
-  const [joinUrl, setJoinUrl] = useState("");
-
-  // Auth & Connection State
-  const [authUser, setAuthUser] = useState<User | null>(null);
-  const [isConnected, setIsConnected] = useState<boolean>(true);
-
-  // NEW: current session id for the game (no DB deletes, only sessions)
-  const [sessionId, setSessionId] = useState<string | null>(null);
-
-  // --- Interactive State ---
-  const [reactions, setReactions] = useState<Reaction[]>([]);
-  const [votes, setVotes] = useState<{ likes: number; dislikes: number; shots: number }>({
-    likes: 0,
-    dislikes: 0,
-    shots: 0,
-  });
-  const [shotVoteMode, setShotVoteMode] = useState(false);
-
-  // --- Helpers ---
-  const genSessionId = () => {
-    // crypto.randomUUID exists in modern browsers
-    try {
-      // @ts-ignore
-      if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-    } catch {}
-    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  };
-
-  const isActiveRow = (p: any, sid: string | null) => {
-    if (!sid) return false;
-    return p?.session_id === sid && p?.is_active === true;
-  };
-
-  // stateRef for realtime handlers (avoid stale closures)
-  const stateRef = useRef({ players, lastActivePlayer, gameState, sessionId });
-  useEffect(() => {
-    stateRef.current = { players, lastActivePlayer, gameState, sessionId };
-  }, [players, lastActivePlayer, gameState, sessionId]);
-
-  // --- Turn management (first player is controller) ---
-  useEffect(() => {
-    if (players.length === 0) {
-      if (lastActivePlayer !== null) setLastActivePlayer(null);
-      return;
-    }
-
-    const activePlayerStillHere =
-      lastActivePlayer && players.find((p) => p.id === lastActivePlayer.id);
-
-    if (!activePlayerStillHere) {
-      const newController = players[0];
-      setLastActivePlayer(newController);
-      syncGameStateToDB(gameState, selectedPlayer?.id, currentChallenge, newController.id);
-    } else {
-      if (gameState === "lobby" || gameState === "waiting_for_spin") {
-        syncGameStateToDB(gameState, selectedPlayer?.id, currentChallenge, lastActivePlayer?.id);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [players.length, gameState]);
-
-  // --- Sync Game State to DB ---
-  const syncGameStateToDB = async (
-    status: string,
-    currentPlayerId: string | null = null,
-    challenge: any = null,
-    forceControllerId: string | undefined | null = undefined
-  ) => {
-    if (!authUser) return;
-
-    let activeControllerId =
-      forceControllerId !== undefined ? forceControllerId : lastActivePlayer?.id;
-
-    if (!activeControllerId && players.length > 0) {
-      activeControllerId = players[0].id;
-    }
-
-    const sid = sessionId ?? stateRef.current.sessionId;
-
-    await supabase.from("game_states").upsert({
-      host_id: authUser.id,
-      session_id: sid, // NEW
-      status,
-      current_player_id: currentPlayerId,
-      last_active_player_id: activeControllerId,
-      heat_level: heatLevel,
-      challenge_text: challenge?.content || null,
-      challenge_type: challengeType,
-      updated_at: new Date().toISOString(),
-    });
-  };
-
-  // Keep syncing important changes
-  useEffect(() => {
-    // only if we have a session already (host is ready)
-    if (authUser && sessionId) {
-      syncGameStateToDB(gameState, selectedPlayer?.id, currentChallenge);
-    }
-
-    if (gameState !== "challenge") {
-      setVotes({ likes: 0, dislikes: 0, shots: 0 });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameState, selectedPlayer, currentChallenge, heatLevel, sessionId]);
-
-  // Always set join URL
-  useEffect(() => {
-    if (authUser && typeof window !== "undefined") {
-      setJoinUrl(`${window.location.origin}/join?hostId=${authUser.id}`);
-    }
-  }, [authUser]);
-
-  // --- Realtime + initial load ---
-  useEffect(() => {
-    let channel: RealtimeChannel | null = null;
-    let gsChannel: RealtimeChannel | null = null;
-
-    const loadOrCreateGameState = async (hostId: string) => {
-      // Try fetch existing game state
-      const gs = await supabase
-        .from("game_states")
-        .select("*")
-        .eq("host_id", hostId)
-        .single();
-
-      if (gs.data?.session_id) {
-        setSessionId(gs.data.session_id);
-        // keep local heat in sync
-        if (gs.data.heat_level) setHeatLevel(gs.data.heat_level);
-        // optional: keep local gameState if you want to restore
-        // if (gs.data.status) setGameState(gs.data.status);
-        return gs.data.session_id as string;
-      }
-
-      // Create default row if missing
-      const created = await supabase
-        .from("game_states")
-        .upsert({
-          host_id: hostId,
-          status: "lobby",
-          current_player_id: null,
-          last_active_player_id: null,
-          challenge_text: null,
-          challenge_type: null,
-          heat_level: 1,
-          session_id: genSessionId(),
-          updated_at: new Date().toISOString(),
-        })
-        .select("session_id, heat_level, status")
-        .single();
-
-      const sid = created.data?.session_id ?? null;
-      setSessionId(sid);
-      if (created.data?.heat_level) setHeatLevel(created.data.heat_level);
-      return sid as string;
-    };
-
-    const loadPlayersForSession = async (hostId: string, sid: string) => {
-      const { data } = await supabase
-        .from("players")
-        .select("*")
-        .eq("host_id", hostId)
-        .eq("session_id", sid)
-        .eq("is_active", true)
-        .order("created_at", { ascending: true });
-
-      if (data) setPlayers(data as Player[]);
-      else setPlayers([]);
-    };
-
-    const setupRealtime = async (hostId: string) => {
-      const sid = await loadOrCreateGameState(hostId);
-      if (sid) await loadPlayersForSession(hostId, sid);
-
-      // Listen to game_states updates (session changes -> clear players UI)
-      gsChannel = supabase
-        .channel(`gamestate_host_${hostId}`)
-        .on(
-          "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "game_states", filter: `host_id=eq.${hostId}` },
-          (payload) => {
-            const next = payload.new as any;
-            const nextSid: string | null = next?.session_id ?? null;
-
-            // Session changed -> hard reset host UI players list etc.
-            if (nextSid && nextSid !== stateRef.current.sessionId) {
-              setSessionId(nextSid);
-              setPlayers([]);
-              setGameState("lobby");
-              setLastActivePlayer(null);
-              setSelectedPlayer(null);
-              setCurrentChallenge(null);
-              setChallengeType(null);
-              setHeatLevel(next?.heat_level ?? 1);
-              return;
-            }
-
-            // keep heat synced if needed
-            if (typeof next?.heat_level === "number") setHeatLevel(next.heat_level);
-          }
-        )
-        .subscribe();
-
-      channel = supabase
-        .channel(`room_${hostId}`)
-
-        // INSERT: only current session + active
-        .on(
-          "postgres_changes",
-          { event: "INSERT", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
-          (payload) => {
-            const np = payload.new as any;
-            const sidNow = stateRef.current.sessionId;
-            if (!isActiveRow(np, sidNow)) return;
-
-            setPlayers((prev) => (prev.some((p) => p.id === np.id) ? prev : [...prev, np]));
-          }
-        )
-
-        // UPDATE: if becomes inactive or session changed -> remove; else upsert into list
-        .on(
-          "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
-          (payload) => {
-            const up = payload.new as any;
-            const sidNow = stateRef.current.sessionId;
-
-            if (!isActiveRow(up, sidNow)) {
-              setPlayers((prev) => prev.filter((p) => p.id !== up.id));
-              return;
-            }
-
-            setPlayers((prev) => {
-              const exists = prev.some((p) => p.id === up.id);
-              return exists ? prev.map((p) => (p.id === up.id ? up : p)) : [...prev, up];
-            });
-          }
-        )
-
-        // (No DELETE needed in this tactic)
-        .on("broadcast", { event: "game_event" }, (event) => handleGameEvent(event.payload))
-        .subscribe((status) => setIsConnected(status === "SUBSCRIBED"));
-    };
-
-    const handleGameEvent = (data: any) => {
-      const { type, payload, playerId } = data;
-
-      // Security/consistency: ignore control events from players not in current session list
-      const allowedTypes = new Set([
-        "emoji",
-        "action_skip",
-        "vote_like",
-        "vote_dislike",
-        "vote_shot",
-        "trigger_spin",
-        "update_heat",
-        "player_left",
-      ]);
-      if (!allowedTypes.has(type)) return;
-
-      const exists = stateRef.current.players.some((p) => p.id === playerId);
-      const isControl =
-        type !== "emoji" && type !== "player_left"; // emoji can be fun; still require exists? choose strict:
-      if ((isControl || type === "emoji" || type === "player_left") && !exists) {
-        // If you want emojis only from current players, keep this.
-        return;
-      }
-
-      if (type === "emoji") {
-        const id = Math.random().toString(36);
-        const randomX = Math.random() * 80 + 10;
-        setReactions((prev) => [...prev, { id, emoji: payload, playerId, x: randomX }]);
-        setTimeout(() => setReactions((prev) => prev.filter((r) => r.id !== id)), 4000);
-      }
-
-      if (type === "update_heat") setHeatLevel(payload);
-      if (type === "trigger_spin") spinTheWheel();
-      if (type === "action_skip") handleSkip();
-
-      // Player left: new tactic => no DB delete, only optimistic UI (DB update done on phone)
-      if (type === "player_left") {
-        setPlayers((prev) => prev.filter((p) => p.id !== playerId));
-      }
-
-      if (type === "vote_like") setVotes((v) => ({ ...v, likes: v.likes + 1 }));
-      if (type === "vote_dislike") setVotes((v) => ({ ...v, dislikes: v.dislikes + 1 }));
-
-      if (type === "vote_shot") {
-        setVotes((v) => {
-          const newShots = v.shots + 1;
-          const threshold = Math.max(2, Math.floor(stateRef.current.players.length / 2));
-          if (newShots >= threshold && !shotVoteMode) triggerGroupShot();
-          return { ...v, shots: newShots };
-        });
-      }
-    };
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        setAuthUser(session.user);
-        setupRealtime(session.user.id);
-      } else {
-        setAuthUser(null);
-        setPlayers([]);
-        setJoinUrl("");
-        setSessionId(null);
-        if (channel) supabase.removeChannel(channel);
-        if (gsChannel) supabase.removeChannel(gsChannel);
-      }
-    });
-
-    return () => {
-      authListener.subscription.unsubscribe();
-      if (channel) supabase.removeChannel(channel);
-      if (gsChannel) supabase.removeChannel(gsChannel);
-      // IMPORTANT: no DB deletes on cleanup in this tactic
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Auto votes logic
-  useEffect(() => {
-    if (gameState !== "challenge") return;
-    const voters = Math.max(1, players.length - 1);
-    if (votes.likes > voters * 0.5) handleDone();
-    else if (votes.dislikes > voters * 0.5) handleSkip();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [votes, players.length, gameState]);
-
-  // --- Game Flow ---
-  const spinTheWheel = () => {
-    const currentPlayers = stateRef.current.players;
-    if (currentPlayers.length < 2) return alert("צריך לפחות 2 שחקנים כדי להתחיל!");
-
-    setGameState("spinning");
-    playSpinSound();
-
-    setTimeout(() => {
-      const randomPlayer = currentPlayers[Math.floor(Math.random() * currentPlayers.length)];
-      setSelectedPlayer(randomPlayer);
-      setChallengeType(Math.random() > 0.5 ? "אמת" : "חובה");
-      setGameState("spotlight");
-    }, 3000);
-  };
-
-  useEffect(() => {
-    if (gameState === "spotlight") {
-      const t = setTimeout(() => setGameState("revealing"), 3000);
-      return () => clearTimeout(t);
-    }
-  }, [gameState]);
-
-  useEffect(() => {
-    if (gameState === "revealing" && selectedPlayer && challengeType && authUser) {
-      setLoadingAI(true);
-      const prevTasks: string[] = [];
-
-      fetch("/api/generate", {
-        method: "POST",
-        body: JSON.stringify({
-          playerName: selectedPlayer.name,
-          playerGender: selectedPlayer.gender,
-          heatLevel: heatLevel,
-          type: challengeType,
-          previousChallenges: prevTasks,
-        }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          setCurrentChallenge(data);
-          setGameState("challenge");
-        })
-        .catch(() => setGameState("challenge"))
-        .finally(() => setLoadingAI(false));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameState]);
-
-  const handleDone = () => {
-    confetti({ particleCount: 200, spread: 120 });
-    setLastActivePlayer(selectedPlayer);
-
-    setTimeout(() => {
-      setGameState("waiting_for_spin");
-      setSelectedPlayer(null);
-    }, 3000);
-  };
-
-  const handleSkip = () => {
-    setGameState("penalty");
-    playShotSound();
-
-    setTimeout(() => {
-      setLastActivePlayer(selectedPlayer);
-      setGameState("waiting_for_spin");
-      setSelectedPlayer(null);
-    }, 5000);
-  };
-
-  const triggerGroupShot = () => {
-    setShotVoteMode(true);
-    playShotSound();
-    setTimeout(() => {
-      setShotVoteMode(false);
-      setGameState("waiting_for_spin");
-    }, 5000);
-  };
-
-  const handleManualRefresh = async () => {
-    if (!authUser) return;
-
-    // Ensure we have current session
-    let sid = sessionId;
-    if (!sid) {
-      const gs = await supabase.from("game_states").select("session_id").eq("host_id", authUser.id).single();
-      sid = (gs.data?.session_id as string) ?? null;
-      setSessionId(sid);
-    }
-    if (!sid) return;
-
-    const { data } = await supabase
-      .from("players")
-      .select("*")
-      .eq("host_id", authUser.id)
-      .eq("session_id", sid)
-      .eq("is_active", true)
-      .order("created_at", { ascending: true });
-
-    if (data) {
-      setPlayers(data as Player[]);
-      if (!lastActivePlayer && data.length > 0) {
-        setLastActivePlayer(data[0] as Player);
-      }
-    }
-  };
-
-  const handleLogout = async () => {
-    if (confirm("האם אתה בטוח שברצונך להתנתק? זה יסגור את החדר.")) {
-      // No deletes. Just sign out.
-      await supabase.auth.signOut();
-    }
-  };
-
-  // NEW: End game = new session_id, reset game state (no DB deletes)
-  const endGame = async (askConfirm = true) => {
-    if (!authUser) return;
-    if (askConfirm && !confirm("לסיים משחק ולהתחיל חדש (0 שחקנים, בלי למחוק DB)?")) return;
-
-    const newSid = genSessionId();
-
-    const { error } = await supabase.from("game_states").upsert({
-      host_id: authUser.id,
-      session_id: newSid,
-      status: "lobby",
-      current_player_id: null,
-      last_active_player_id: null,
-      challenge_text: null,
-      challenge_type: null,
-      heat_level: 1,
-      updated_at: new Date().toISOString(),
-    });
-
-    if (error) {
-      console.error("endGame error:", error);
-      alert("סיום משחק נכשל (בדוק RLS / חיבור).");
-      return;
-    }
-
-    // Reset local UI
-    setSessionId(newSid);
-    setPlayers([]);
-    setGameState("lobby");
-    setLastActivePlayer(null);
-    setSelectedPlayer(null);
-    setCurrentChallenge(null);
-    setChallengeType(null);
-    setHeatLevel(1);
-  };
-
-  const handleHeatChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setHeatLevel(parseInt(e.target.value));
-  };
-
-  const playSpinSound = () => {
-    /* Play spin.mp3 */
-  };
-  const playWinSound = () => {
-    /* Play win.mp3 */
-  };
-  const playShotSound = () => {
-    /* Play shot.mp3 */
-  };
+  const { playSpin, playShot, playWin } = useGameSounds();
+
+  const {
+    gameState,
+    players,
+    heatLevel,
+    selectedPlayer,
+    lastActivePlayer,
+    challengeType,
+    currentChallenge,
+    joinUrl,
+    authUser,
+    isConnected,
+    reactions,
+    votes,
+    shotVoteMode,
+    setHeatLevel,
+    spinTheWheel,
+    handleManualRefresh,
+    handleLogout,
+    endGame
+  } = useHostGameLogic(playSpin, playShot, playWin);
+
+  // --- Renders ---
 
   return (
     <main
@@ -573,43 +60,30 @@ export default function TruthOrDareGame() {
           <div className="flex items-center gap-2">
             <UserIcon size={16} /> {players.length}
           </div>
-          <button
-            onClick={handleManualRefresh}
-            className="p-2 hover:bg-white/20 rounded-full transition-colors text-blue-400"
-            title="רענון"
-          >
+          <button onClick={handleManualRefresh} className="p-2 hover:bg-white/20 rounded-full transition-colors text-blue-400" title="רענון">
             <RefreshCw size={16} />
           </button>
-
-          <button
-            onClick={() => endGame(true)}
-            className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400"
-            title="סיום משחק (איפוס בלי מחיקה)"
-          >
+          <button onClick={() => endGame(true)} className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400" title="איפוס משחק">
             <Trash2 size={20} />
           </button>
-
-          <button
-            onClick={handleLogout}
-            className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400"
-            title="התנתק"
-          >
+          <button onClick={handleLogout} className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400" title="התנתק">
             <LogOut size={16} />
           </button>
-
           {!isConnected && <WifiOff className="text-red-500 animate-pulse" />}
         </div>
       )}
 
-      {/* --- Global Emojis Overlay --- */}
-      <div className="fixed inset-0 pointer-events-none z-[100] overflow-hidden">
+      {/* Global Emojis Overlay - FIXED: Added dir="ltr" and changed positioning logic */}
+      <div className="fixed inset-0 pointer-events-none z-[100] overflow-hidden" dir="ltr">
         <AnimatePresence>
           {reactions.map((r) => (
             <motion.div
               key={r.id}
-              initial={{ opacity: 0, scale: 0.5, y: "100vh", x: `${r.x}vw` }}
+              // שינוי לוגיקה: משתמשים ב-left לפי אחוזים, ומאפסים את ה-x כדי למרכז את האימוג'י עצמו
+              initial={{ opacity: 0, scale: 0.5, y: "100vh", x: "-50%" }}
               animate={{ opacity: 1, scale: [1, 1.5, 1], y: "-20vh" }}
               exit={{ opacity: 0 }}
+              style={{ left: `${r.x}%` }} // מיקום אבסולוטי באחוזים מהשמאל
               transition={{ duration: 4, ease: "easeOut" }}
               className="absolute text-7xl md:text-8xl drop-shadow-[0_0_15px_rgba(0,0,0,0.8)]"
             >
@@ -619,8 +93,9 @@ export default function TruthOrDareGame() {
         </AnimatePresence>
       </div>
 
-      {/* --- Main Game Area --- */}
+      {/* Main Game Area */}
       <div className="flex-1 flex flex-col items-center justify-center relative z-10 p-10 h-full">
+        {/* Disconnected State */}
         {!authUser && (
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
@@ -643,6 +118,7 @@ export default function TruthOrDareGame() {
           </motion.div>
         )}
 
+        {/* Lobby / Waiting */}
         {authUser && (gameState === "lobby" || gameState === "waiting_for_spin") && (
           <div className="flex flex-col items-center w-full max-w-6xl h-full justify-center">
             <h1 className="text-8xl md:text-9xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 drop-shadow-[0_0_30px_rgba(236,72,153,0.5)] mb-12 tracking-tighter">
@@ -658,7 +134,6 @@ export default function TruthOrDareGame() {
 
               {players.map((p) => {
                 const isController = lastActivePlayer?.id === p.id;
-
                 return (
                   <div key={p.id} className="relative group">
                     <div
@@ -692,7 +167,7 @@ export default function TruthOrDareGame() {
               })}
             </div>
 
-            {/* Host controls */}
+            {/* Controls */}
             <div className="mt-12 bg-white/5 backdrop-blur-xl p-4 rounded-2xl border border-white/10 flex items-center gap-6">
               {gameState === "lobby" && players.length >= 2 && (
                 <button
@@ -710,15 +185,13 @@ export default function TruthOrDareGame() {
                 min="1"
                 max="10"
                 value={heatLevel}
-                onChange={handleHeatChange}
+                onChange={(e) => setHeatLevel(parseInt(e.target.value))}
                 className="w-32 accent-pink-500"
               />
-
-              {/* End Game (no deletes) */}
               <button
                 onClick={() => endGame(true)}
                 className="p-2 hover:bg-red-900/50 rounded-lg text-red-300 ml-4 flex items-center gap-2"
-                title="סיום משחק (איפוס בלי מחיקה)"
+                title="סיום משחק"
               >
                 <Trash2 size={20} />
                 <span className="hidden md:inline font-bold">סיום משחק</span>
@@ -727,6 +200,7 @@ export default function TruthOrDareGame() {
           </div>
         )}
 
+        {/* Spinning Wheel */}
         {authUser && gameState === "spinning" && (
           <div className="relative">
             <motion.div
@@ -739,6 +213,7 @@ export default function TruthOrDareGame() {
           </div>
         )}
 
+        {/* Spotlight */}
         {authUser && gameState === "spotlight" && selectedPlayer && (
           <motion.div
             initial={{ scale: 0 }}
@@ -757,6 +232,7 @@ export default function TruthOrDareGame() {
           </motion.div>
         )}
 
+        {/* Challenge Card */}
         {authUser &&
           (gameState === "challenge" || gameState === "revealing") &&
           currentChallenge &&
@@ -838,6 +314,7 @@ export default function TruthOrDareGame() {
             </div>
           )}
 
+        {/* Penalty Screen */}
         <AnimatePresence>
           {gameState === "penalty" && (
             <motion.div
@@ -872,6 +349,7 @@ export default function TruthOrDareGame() {
           )}
         </AnimatePresence>
 
+        {/* Group Shot Screen */}
         <AnimatePresence>
           {shotVoteMode && (
             <motion.div
@@ -889,6 +367,7 @@ export default function TruthOrDareGame() {
           )}
         </AnimatePresence>
 
+        {/* Join QR Code */}
         {authUser && joinUrl && (
           <div
             className={`absolute z-30 transition-all duration-500 bg-white p-2 rounded-xl shadow-2xl ${
