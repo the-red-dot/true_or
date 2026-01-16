@@ -1,4 +1,5 @@
 // src/app/api/generate/route.ts
+
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -10,22 +11,23 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    // הוספנו את players לרשימת הפרמטרים הנשלפים מהבקשה
     const { playerName, playerGender, heatLevel, type, previousChallenges, players } = body;
 
-    // נרמול מגדר
+    // נרמול מגדר (התאמה למבנה בדאטה בייס)
     let dbGender = 'neutral';
     if (playerGender === 'male') dbGender = 'male';
     if (playerGender === 'female') dbGender = 'female';
 
-    // טווח רמות
+    // טווח רמות: גמישות של +/- 1 כדי למצוא יותר תוצאות
     let minHeat = heatLevel === 1 ? 1 : heatLevel - 1;
     let maxHeat = heatLevel === 10 ? 10 : heatLevel + 1;
 
-    // שליפת משימות רלוונטיות
+    // שליפת משימות רלוונטיות מה-DB
     const { data: tasks, error } = await supabase
       .from('game_tasks')
       .select('*')
-      .eq('type', type)
+      .eq('type', type) // 'אמת' או 'חובה'
       .gte('heat_level', minHeat)
       .lte('heat_level', maxHeat)
       .or(`gender.eq.${dbGender},gender.eq.neutral`);
@@ -49,37 +51,42 @@ export async function POST(req: Request) {
         });
     }
 
-    // סינון משימות שכבר היו
+    // סינון משימות שכבר היו (לפי הטקסט שנשלח מהקלאיינט)
     const availableTasks = tasks.filter((t: any) => 
         !previousChallenges.some((prev: string) => prev === t.content)
     );
 
+    // אם סיימנו את כל המשימות, נאפס ונבחר מכל המאגר
     const finalPool = availableTasks.length > 0 ? availableTasks : tasks;
+
+    // בחירה רנדומלית
     const randomTask = finalPool[Math.floor(Math.random() * finalPool.length)];
     
     let content = randomTask.content;
 
     // --- לוגיקת בחירת קורבן (Victim Logic) ---
-    if (content.includes("[chosenName]")) {
+    // רק אם המשימה מכילה את הפלייסהולדר [chosenName]
+    if (content.includes("[chosenName]") && players && players.length > 0) {
         let victims: any[] = [];
         
-        // סינון לפי מגדר הפוך
+        // סינון לפי מגדר הפוך: בן מקבל בת, בת מקבלת בן
         if (playerGender === 'male') {
             victims = players.filter((p: any) => p.gender === 'female');
         } else if (playerGender === 'female') {
             victims = players.filter((p: any) => p.gender === 'male');
         }
 
-        // גיבוי: אם אין מהמין השני (או אם השחקן נייטרלי/אחר), קח כל אחד שהוא לא השחקן עצמו
+        // גיבוי 1: אם אין קורבנות מהמין השני (או אם המגדר נייטרלי/אחר), קח כל שחקן שהוא לא המבצע עצמו
         if (victims.length === 0) {
             victims = players.filter((p: any) => p.name !== playerName);
         }
 
+        // בחירת הקורבן והחלפת השם בטקסט
         if (victims.length > 0) {
             const chosenVictim = victims[Math.floor(Math.random() * victims.length)];
             content = content.replace("[chosenName]", chosenVictim.name);
         } else {
-            // מקרה קיצון: משחק לבד
+            // גיבוי 2 (מקרה קיצון): משחק לבד או אין אף אחד אחר
             content = content.replace("[chosenName]", "עצמך (אין עוד שחקנים)");
         }
     }

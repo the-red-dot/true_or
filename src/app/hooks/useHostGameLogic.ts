@@ -398,6 +398,7 @@ export const useHostGameLogic = (
     }
   }, [gameState]);
 
+  // AI Generation (Modified to include players)
   useEffect(() => {
     if (gameState === "revealing" && selectedPlayer && challengeType && authUser) {
       setLoadingAI(true);
@@ -406,6 +407,7 @@ export const useHostGameLogic = (
         body: JSON.stringify({
           playerName: selectedPlayer.name,
           playerGender: selectedPlayer.gender,
+          players: players, // <--- כאן התיקון: שליחת כל השחקנים לשרת
           heatLevel: heatLevel,
           type: challengeType,
           previousChallenges: [],
@@ -419,7 +421,7 @@ export const useHostGameLogic = (
         .catch(() => setGameState("challenge"))
         .finally(() => setLoadingAI(false));
     }
-  }, [gameState]); // Removed deps to avoid double fetch, relies on gameState change
+  }, [gameState]);
 
   const handleDone = () => {
     confetti({ particleCount: 200, spread: 120 });
