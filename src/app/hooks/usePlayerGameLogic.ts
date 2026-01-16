@@ -126,9 +126,21 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   useEffect(() => {
     if (!hostId) return;
 
-    const bc = supabase.channel(`room_${hostId}`);
-    broadcastRef.current = bc;
-    bc.subscribe();
+    // ערוץ ייעודי לשידורים (Broadcast) - חשוב שהשם יהיה זהה למה שהמארח מאזין לו
+    // הוספנו קונפיגורציה מפורשת כדי לוודא שהשידור מופעל
+    const bc = supabase.channel(`room_${hostId}`, {
+      config: {
+        broadcast: { self: false },
+      },
+    });
+    
+    bc.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        broadcastRef.current = bc;
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error("Broadcast channel error");
+      }
+    });
 
     const gameStateChannel = supabase
       .channel(`gamestate_listener_${hostId}`)
@@ -211,12 +223,24 @@ export const usePlayerGameLogic = (hostId: string | null) => {
 
   // --- Actions ---
   const sendAction = async (type: string, payload: any = {}) => {
-    if (!hostId || !myPlayerIdRef.current || !broadcastRef.current) return;
-    await broadcastRef.current.send({
-      type: "broadcast",
-      event: "game_event",
-      payload: { type, payload, playerId: myPlayerIdRef.current },
-    });
+    // בדיקה מחמירה יותר לפני שליחה
+    if (!hostId || !myPlayerIdRef.current) return;
+    
+    // אם הערוץ לא קיים ברפרנס, ננסה להשתמש בחדש זמנית או פשוט נצא (אבל ה-useEffect אמור לדאוג לזה)
+    if (!broadcastRef.current) {
+        console.warn("Broadcast channel not ready yet");
+        return;
+    }
+
+    try {
+      await broadcastRef.current.send({
+        type: "broadcast",
+        event: "game_event",
+        payload: { type, payload, playerId: myPlayerIdRef.current },
+      });
+    } catch (err) {
+      console.error("Error sending action:", err);
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
