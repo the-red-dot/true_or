@@ -235,33 +235,34 @@ export default function TruthOrDareGame() {
                 animate={{ y: 0, opacity: 1 }}
                 className="w-full max-w-5xl px-4 relative z-20"
               >
-                {/* -------------------- הוספת האווטר של השחקן הנבחר כאן -------------------- */}
-                <div className="absolute -top-16 left-1/2 -translate-x-1/2 z-30">
-                   <div className="w-32 h-32 rounded-full border-4 border-white shadow-lg overflow-hidden bg-black">
+                {/* --- Active Player Avatar Header --- */}
+                <div className="absolute -top-16 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center">
+                   <div className="w-32 h-32 rounded-full border-4 border-white shadow-lg overflow-hidden bg-black relative z-10">
                       <img src={selectedPlayer.avatar} className="w-full h-full object-cover" alt="Active Player" />
                    </div>
-                   <div className="text-center mt-1 bg-black/60 px-3 rounded-full text-white font-bold text-sm backdrop-blur-sm">
+                   <div className="mt-2 bg-black/80 px-4 py-1 rounded-full text-white font-bold text-lg backdrop-blur-sm shadow-md border border-white/10">
                       {selectedPlayer.name}
                    </div>
                 </div>
-                {/* -------------------------------------------------------------------------- */}
 
-                {/* הגדלתי את ה-padding-top ל-pt-32 כדי ליצור רווח ברור בין האווטר לתגית */}
-                <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-12 rounded-[3rem] text-center shadow-2xl relative overflow-hidden pt-32">
+                {/* --- Challenge Card --- */}
+                <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-12 rounded-[3rem] text-center shadow-2xl relative overflow-hidden pt-40">
                   <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-pink-500 to-cyan-500" />
-                  <div className="flex justify-center mb-6">
+                  
+                  <div className="flex justify-center mb-8">
                     <span
-                      className={`text-4xl font-black px-6 py-2 rounded-full ${
+                      className={`text-5xl font-black px-8 py-3 rounded-full shadow-lg ${
                         challengeType === "אמת"
-                          ? "bg-blue-500/20 text-blue-400"
-                          : "bg-pink-500/20 text-pink-400"
+                          ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                          : "bg-pink-500/20 text-pink-400 border border-pink-500/30"
                       }`}
                     >
                       {challengeType}
                     </span>
                   </div>
+                  
                   <h3
-                    className="text-5xl md:text-7xl font-black leading-tight mb-8 drop-shadow-lg"
+                    className="text-5xl md:text-7xl font-black leading-tight mb-12 drop-shadow-lg"
                     style={{ direction: "rtl" }}
                   >
                     {currentChallenge.content}
@@ -295,8 +296,8 @@ export default function TruthOrDareGame() {
                   )}
                 </div>
               </motion.div>
-
-              {/* הסרתי את רשימת השחקנים למטה כדי לנקות את המסך כפי שביקשת */}
+              
+              {/* Removed the bottom players list to keep the screen clean */}
             </div>
           )}
 
