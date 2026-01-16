@@ -1,4 +1,4 @@
-// src/hooks/useHostGameLogic.ts
+// src/app/hooks/useHostGameLogic.ts
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/app/lib/supabase";
 import { User, RealtimeChannel } from "@supabase/supabase-js";
@@ -68,7 +68,6 @@ export const useHostGameLogic = (
 
   const isActiveRow = (p: any, sid: string | null) => {
     if (!sid) return false;
-    // בדיקה פשוטה יותר - אם ה-session_id תואם והשחקן פעיל
     return p?.session_id === sid && p?.is_active === true;
   };
 
@@ -237,9 +236,10 @@ export const useHostGameLogic = (
         )
         .subscribe();
 
-      // Listen to players - FIXED REALTIME LOGIC
+      // Listen to players AND broadcasts
+      // TIKUN: Changed from `room_${hostId}_players` to `room_${hostId}` to match player's channel
       channel = supabase
-        .channel(`room_${hostId}_players`)
+        .channel(`room_${hostId}`)
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
@@ -247,7 +247,6 @@ export const useHostGameLogic = (
             const np = payload.new as any;
             const sidNow = stateRef.current.sessionId;
             
-            // אנחנו מוסיפים רק אם השחקן שייך לסשן הנוכחי והוא פעיל
             if (isActiveRow(np, sidNow)) {
                  setPlayers((prev) => {
                     const exists = prev.some((p) => p.id === np.id);
@@ -264,20 +263,17 @@ export const useHostGameLogic = (
             const up = payload.new as any;
             const sidNow = stateRef.current.sessionId;
 
-            // אם השחקן לא פעיל או שייך לסשן אחר - הסר אותו
             if (!isActiveRow(up, sidNow)) {
               setPlayers((prev) => prev.filter((p) => p.id !== up.id));
               return;
             }
 
-            // אחרת, עדכן או הוסף אותו
             setPlayers((prev) => {
               const exists = prev.some((p) => p.id === up.id);
               return exists ? prev.map((p) => (p.id === up.id ? up : p)) : [...prev, up];
             });
           }
         )
-        // הוספתי גם האזנה למחיקה למקרה שמשהו נמחק מהדאטהבייס ידנית
          .on(
           "postgres_changes",
           { event: "DELETE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
@@ -288,6 +284,7 @@ export const useHostGameLogic = (
              }
           }
         )
+        // האזנה לאירועי Broadcast (כמו אימוג'ים)
         .on("broadcast", { event: "game_event" }, (event) => handleGameEvent(event.payload))
         .subscribe((status) => setIsConnected(status === "SUBSCRIBED"));
     };
@@ -300,14 +297,17 @@ export const useHostGameLogic = (
       ]);
       if (!allowedTypes.has(type)) return;
 
+      // עבור אימוג'ים, אנחנו פחות קשוחים בבדיקה אם השחקן קיים ברשימה
+      // (לפעמים ה-Broadcast מגיע לפני שה-DB מתעדכן)
       const exists = stateRef.current.players.some((p) => p.id === playerId);
-      // נאפשר player_left גם אם השחקן כבר לא ברשימה (למקרה קיצון)
       if (type !== "emoji" && type !== "player_left" && !exists) return;
 
       if (type === "emoji") {
         const id = Math.random().toString(36);
-        const randomX = Math.random() * 80 + 10;
+        const randomX = Math.random() * 80 + 10; // מיקום רנדומלי לרוחב המסך
         setReactions((prev) => [...prev, { id, emoji: payload, playerId, x: randomX }]);
+        
+        // ניקוי האימוג'י אחרי שהאנימציה מסתיימת
         setTimeout(() => setReactions((prev) => prev.filter((r) => r.id !== id)), 4000);
       }
 
