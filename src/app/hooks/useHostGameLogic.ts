@@ -364,13 +364,15 @@ export const useHostGameLogic = (
 
   const spinTheWheel = () => {
     const currentPlayers = stateRef.current.players;
+    // CRITICAL FIX: Use Ref to check the ACTUAL current game state to prevent double-firing
+    const currentGameState = stateRef.current.gameState;
     
     if (currentPlayers.length < 2) {
         handleManualRefresh();
         if (currentPlayers.length < 2) return alert("צריך לפחות 2 שחקנים כדי להתחיל!");
     }
 
-    if (gameState !== 'lobby' && gameState !== 'waiting_for_spin') {
+    if (currentGameState !== 'lobby' && currentGameState !== 'waiting_for_spin') {
         return;
     }
 
