@@ -1,4 +1,4 @@
-// src/app/hooks/usePlayerGameLogic.ts
+// src/hooks/usePlayerGameLogic.ts
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/app/lib/supabase";
 import { RealtimeChannel, User } from "@supabase/supabase-js";
@@ -42,14 +42,20 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
   const [gameState, setGameState] = useState<GameStateRow | null>(null);
   const [localHeat, setLocalHeat] = useState(1);
-  const [hasVoted, setHasVoted] = useState(false); // הוספנו סטייט למעקב אחרי הצבעה
 
   // Refs
   const myPlayerIdRef = useRef<string | null>(null);
   const myUserIdRef = useRef<string | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const broadcastRef = useRef<RealtimeChannel | null>(null);
-  const lastChallengeRef = useRef<string | null>(null); // למעקב אחרי שינוי משימה
+
+  // Prevent "ghost taps"/multi-send when channel isn't ready yet
+  const pendingActionRef = useRef<{ type: string; payload: any } | null>(null);
+
+  // Small UX guards (do not affect responsiveness)
+  const heatDebounceRef = useRef<number | null>(null);
+  const spinLockRef = useRef(false);
+  const voteLockRef = useRef(false);
 
   useEffect(() => {
     myPlayerIdRef.current = myPlayerId;
@@ -58,6 +64,16 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   // --- Helpers ---
   const handleKicked = (opts?: { keepInputs?: boolean }) => {
     if (hostId) localStorage.removeItem(`player_id_${hostId}`);
+
+    // Clear pending/locks so nothing "fires later"
+    pendingActionRef.current = null;
+    spinLockRef.current = false;
+    voteLockRef.current = false;
+    if (heatDebounceRef.current) {
+      window.clearTimeout(heatDebounceRef.current);
+      heatDebounceRef.current = null;
+    }
+
     setMyPlayerId(null);
     setIsSubmitted(false);
   };
@@ -124,23 +140,33 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       });
   }, [hostId]);
 
-  // 3. Realtime Listeners
+  // 3. Realtime Listeners (Unified)
   useEffect(() => {
     if (!hostId) return;
 
+    // We create one broadcast channel for interactions
     const bc = supabase.channel(`room_${hostId}`, {
       config: {
         broadcast: { self: false },
       },
     });
-    
+
     bc.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
+      if (status === "SUBSCRIBED") {
         broadcastRef.current = bc;
         console.log("Broadcast channel connected for player");
+
+        // Flush only the latest pending action (prevents stacked "auto clicks")
+        const pending = pendingActionRef.current;
+        if (pending) {
+          pendingActionRef.current = null;
+          // fire once, now that the channel is ready
+          void sendAction(pending.type, pending.payload);
+        }
       }
     });
 
+    // Separate channels for DB changes to avoid filter conflicts
     const gameStateChannel = supabase
       .channel(`gamestate_listener_${hostId}`)
       .on(
@@ -150,10 +176,17 @@ export const usePlayerGameLogic = (hostId: string | null) => {
           const next = payload.new as GameStateRow;
           setGameState(next);
           setLocalHeat(next.heat_level ?? 1);
+
           const nextSession = next.session_id ?? null;
           if (nextSession && nextSession !== sessionIdRef.current) {
             sessionIdRef.current = nextSession;
             if (myPlayerIdRef.current) handleKicked({ keepInputs: true });
+          }
+
+          // Optional: unlock vote on new challenge text / leaving challenge state
+          // This is a lightweight guard against duplicate vote sends on mobile.
+          if (next.status !== "challenge") {
+            voteLockRef.current = false;
           }
         }
       )
@@ -187,14 +220,19 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       .subscribe();
 
     return () => {
-      // Cleanup
-      if (broadcastRef.current) {
-        supabase.removeChannel(broadcastRef.current);
-        broadcastRef.current = null;
+      // Cleanup timers
+      if (heatDebounceRef.current) {
+        window.clearTimeout(heatDebounceRef.current);
+        heatDebounceRef.current = null;
       }
+
+      // Cleanup channels
+      supabase.removeChannel(bc);
+      broadcastRef.current = null;
       supabase.removeChannel(gameStateChannel);
       supabase.removeChannel(playersChannel);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hostId]);
 
   // 4. Restore Session
@@ -224,32 +262,19 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     })();
   }, [hostId, authReady, gameState?.session_id]);
 
-  // 5. Reset Votes on New Turn/Challenge
-  useEffect(() => {
-    // אם הסטטוס השתנה (למשל חזר ללובי או ספין) או שהטקסט של המשימה השתנה - נאפס את ההצבעה
-    const isNewChallenge = gameState?.challenge_text !== lastChallengeRef.current;
-    const isNotChallenge = gameState?.status !== "challenge";
-
-    if (isNewChallenge || isNotChallenge) {
-        setHasVoted(false);
-        if (gameState?.challenge_text) {
-            lastChallengeRef.current = gameState.challenge_text;
-        }
-    }
-  }, [gameState?.challenge_text, gameState?.status]);
-
   // --- Actions ---
   const sendAction = async (type: string, payload: any = {}) => {
     if (!hostId || !myPlayerIdRef.current) {
-        console.warn("Cannot send action: Missing hostId or playerId");
-        return;
+      console.warn("Cannot send action: Missing hostId or playerId");
+      return;
     }
-    
+
     const channel = broadcastRef.current;
+
+    // If channel isn't ready, store only the latest action (no recursive retries!)
     if (!channel) {
-        console.warn("Broadcast channel not ready yet. Retrying in 500ms...");
-        setTimeout(() => sendAction(type, payload), 500);
-        return;
+      pendingActionRef.current = { type, payload };
+      return;
     }
 
     try {
@@ -328,25 +353,52 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     handleKicked({ keepInputs: true });
   };
 
-  const handleSpin = () => sendAction("trigger_spin");
+  const handleSpin = () => {
+    if (spinLockRef.current) return;
+    spinLockRef.current = true;
+
+    void sendAction("trigger_spin");
+
+    // short lock to prevent double-tap / accidental multi-send
+    window.setTimeout(() => {
+      spinLockRef.current = false;
+    }, 800);
+  };
+
   const handleHeatChange = (val: number) => {
     setLocalHeat(val);
-    sendAction("update_heat", val);
+
+    // Debounce to reduce spam + prevent weird queued events
+    if (heatDebounceRef.current) window.clearTimeout(heatDebounceRef.current);
+    heatDebounceRef.current = window.setTimeout(() => {
+      void sendAction("update_heat", val);
+    }, 120);
   };
-  const sendEmoji = (icon: string) => sendAction("emoji", icon);
-  
-  // פונקציית ההצבעה המעודכנת
+
+  const sendEmoji = (icon: string) => {
+    void sendAction("emoji", icon);
+  };
+
   const sendVote = (type: "vote_like" | "vote_dislike" | "vote_shot" | "action_skip") => {
-    if (hasVoted) return; // מונע הצבעה כפולה
-    sendAction(type);
-    setHasVoted(true); // נועל הצבעות נוספות לסיבוב זה
+    // lightweight guard against rapid double taps
+    if (voteLockRef.current) return;
+    voteLockRef.current = true;
+
+    void sendAction(type);
+
+    window.setTimeout(() => {
+      voteLockRef.current = false;
+    }, 600);
   };
 
   return {
     // State
-    name, setName,
-    gender, setGender,
-    imagePreview, handleImageUpload,
+    name,
+    setName,
+    gender,
+    setGender,
+    imagePreview,
+    handleImageUpload,
     isSubmitted,
     loading,
     authReady,
@@ -354,14 +406,13 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     gameState,
     localHeat,
     myPlayerId,
-    hasVoted, // ייצוא הסטייט לשימוש ב-UI אם נרצה
-    
+
     // Actions
     handleJoin,
     handleLeaveGame,
     handleSpin,
     handleHeatChange,
     sendEmoji,
-    sendVote
+    sendVote,
   };
 };
