@@ -1,5 +1,4 @@
 // src/app/hooks/useHostGameLogic.ts
-
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/app/lib/supabase";
 import { User } from "@supabase/supabase-js";
@@ -67,11 +66,13 @@ export const useHostGameLogic = (
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   };
 
-  // (kept for compatibility, even if unused in this file)
-  const isActiveRow = (p: any, sid: string | null) => {
-    if (!sid) return false;
-    return p?.session_id === sid && p?.is_active === true;
+  const resetVotes = () => {
+    setVotes({ likes: 0, dislikes: 0, shots: 0 });
+    setShotVoteMode(false);
   };
+
+  // Prevent double-ending a round due to late/duplicated vote events
+  const roundEndLockRef = useRef(false);
 
   // State Ref - Critical for Realtime Callbacks (avoid stale closures)
   const stateRef = useRef({
@@ -113,6 +114,59 @@ export const useHostGameLogic = (
     authUser,
   ]);
 
+  // --- Sync Game State to DB ---
+  const syncGameStateToDB = async (args: {
+    status: string;
+    currentPlayerId: string | null;
+    controllerId: string | null;
+    heat: number;
+    sid: string | null;
+    challengeText: string | null;
+    challengeT: "אמת" | "חובה" | null;
+  }) => {
+    const au = stateRef.current.authUser;
+    if (!au) return;
+
+    await supabase.from("game_states").upsert({
+      host_id: au.id,
+      session_id: args.sid,
+      status: args.status,
+      current_player_id: args.currentPlayerId,
+      last_active_player_id: args.controllerId,
+      heat_level: args.heat,
+      challenge_text: args.challengeText,
+      challenge_type: args.challengeT,
+      updated_at: new Date().toISOString(),
+    });
+  };
+
+  // Ensure controller exists in DB ASAP (fix: phone doesn't see Start Game until round 1)
+  const ensureController = (list: Player[]) => {
+    const gs = stateRef.current.gameState;
+    const sid = stateRef.current.sessionId;
+    const au = stateRef.current.authUser;
+    if (!au || !sid) return;
+    if (gs !== "lobby" && gs !== "waiting_for_spin") return;
+    if (list.length === 0) return;
+
+    const current = stateRef.current.lastActivePlayer;
+    const stillExists = current && list.some((p) => p.id === current.id);
+    const controller = stillExists ? current! : list[0];
+
+    if (!stillExists) setLastActivePlayer(controller);
+
+    // write controller to DB so players can see Start Game immediately
+    void syncGameStateToDB({
+      status: gs,
+      currentPlayerId: stateRef.current.selectedPlayer?.id ?? null,
+      controllerId: controller.id,
+      heat: stateRef.current.heatLevel,
+      sid,
+      challengeText: stateRef.current.currentChallenge?.content ?? null,
+      challengeT: stateRef.current.challengeType,
+    });
+  };
+
   // --- 1. Auth Initialization ---
   useEffect(() => {
     const initAuth = async () => {
@@ -131,6 +185,7 @@ export const useHostGameLogic = (
         setPlayers([]);
         setSessionId(null);
         setJoinUrl("");
+        resetVotes();
       }
     });
 
@@ -144,17 +199,15 @@ export const useHostGameLogic = (
     if (!authUser) return;
 
     const loadGame = async () => {
-      // Fetch existing game state
       const gs = await supabase.from("game_states").select("*").eq("host_id", authUser.id).single();
 
       let currentSid: string | null = null;
 
       if (gs.data?.session_id) {
-        // Restore existing
         const data = gs.data;
         currentSid = data.session_id;
         setSessionId(currentSid);
-        if (data.heat_level) setHeatLevel(data.heat_level);
+        if (typeof data.heat_level === "number") setHeatLevel(data.heat_level);
         if (data.status) setGameState(data.status as any);
         if (data.challenge_type) setChallengeType(data.challenge_type as any);
         if (data.challenge_text)
@@ -165,7 +218,6 @@ export const useHostGameLogic = (
             usedModel: "Restored",
           });
       } else {
-        // Create new
         currentSid = genSessionId();
         await supabase.from("game_states").upsert({
           host_id: authUser.id,
@@ -177,7 +229,6 @@ export const useHostGameLogic = (
         setSessionId(currentSid);
       }
 
-      // Load players for this session
       if (currentSid) {
         const { data: loadedPlayers } = await supabase
           .from("players")
@@ -188,35 +239,37 @@ export const useHostGameLogic = (
           .order("created_at", { ascending: true });
 
         if (loadedPlayers) {
-          setPlayers(loadedPlayers as Player[]);
+          const list = loadedPlayers as Player[];
+          setPlayers(list);
 
           // Restore context if needed
           if (gs.data) {
             if (gs.data.current_player_id) {
-              const selected = (loadedPlayers as Player[]).find(
-                (p) => p.id === gs.data.current_player_id
-              );
+              const selected = list.find((p) => p.id === gs.data.current_player_id);
               if (selected) setSelectedPlayer(selected);
             }
             if (gs.data.last_active_player_id) {
-              const active = (loadedPlayers as Player[]).find(
-                (p) => p.id === gs.data.last_active_player_id
-              );
+              const active = list.find((p) => p.id === gs.data.last_active_player_id);
               if (active) setLastActivePlayer(active);
-              else if (loadedPlayers.length > 0) setLastActivePlayer(loadedPlayers[0] as Player);
-            } else if (loadedPlayers.length > 0) {
-              setLastActivePlayer(loadedPlayers[0] as Player);
+              else if (list.length > 0) setLastActivePlayer(list[0]);
+            } else if (list.length > 0) {
+              setLastActivePlayer(list[0]);
             }
+          } else if (list.length > 0) {
+            setLastActivePlayer(list[0]);
           }
+
+          // IMPORTANT: make sure DB has a controller immediately
+          ensureController(list);
         }
       }
     };
 
     loadGame();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser]);
 
   // --- Actions (defined early because realtime handlers use them) ---
-
   const handleManualRefresh = async () => {
     const au = stateRef.current.authUser;
     const sid = stateRef.current.sessionId;
@@ -231,22 +284,29 @@ export const useHostGameLogic = (
       .order("created_at", { ascending: true });
 
     if (data) {
-      console.log("Manual Refresh Data:", data);
       setPlayers(data as Player[]);
-      if (!stateRef.current.lastActivePlayer && data.length > 0) setLastActivePlayer(data[0] as Player);
+      ensureController(data as Player[]);
     }
   };
 
   const triggerGroupShot = () => {
+    if (roundEndLockRef.current) return;
+    roundEndLockRef.current = true;
+
     setShotVoteMode(true);
     playShotSound();
+
     setTimeout(() => {
       setShotVoteMode(false);
       setGameState("waiting_for_spin");
+      setSelectedPlayer(null);
     }, 5000);
   };
 
   const handleDone = () => {
+    if (roundEndLockRef.current) return;
+    roundEndLockRef.current = true;
+
     confetti({ particleCount: 200, spread: 120 });
     playWinSound();
 
@@ -260,6 +320,9 @@ export const useHostGameLogic = (
   };
 
   const handleSkip = () => {
+    if (roundEndLockRef.current) return;
+    roundEndLockRef.current = true;
+
     setGameState("penalty");
     playShotSound();
 
@@ -275,12 +338,15 @@ export const useHostGameLogic = (
     const { players: currentPlayers, gameState: gs } = stateRef.current;
 
     if (currentPlayers.length < 2) {
-      handleManualRefresh();
+      void handleManualRefresh();
       if (stateRef.current.players.length < 2) return alert("צריך לפחות 2 שחקנים כדי להתחיל!");
     }
 
-    // IMPORTANT: use ref-based state to avoid stale closures
     if (gs !== "lobby" && gs !== "waiting_for_spin") return;
+
+    // new round starts
+    roundEndLockRef.current = false;
+    resetVotes();
 
     setGameState("spinning");
     playSpinSound();
@@ -297,27 +363,57 @@ export const useHostGameLogic = (
   };
 
   // --- Handlers ---
-
   const handleGameEvent = (data: any) => {
     const { type, payload, playerId } = data;
+    const gs = stateRef.current.gameState;
 
     if (type === "emoji") {
       const id = Math.random().toString(36);
       const randomX = Math.random() * 80 + 10;
       setReactions((prev) => [...prev, { id, emoji: payload, playerId, x: randomX }]);
       setTimeout(() => setReactions((prev) => prev.filter((r) => r.id !== id)), 4000);
+      return;
     }
 
-    if (type === "update_heat") setHeatLevel(payload);
-    if (type === "trigger_spin") spinTheWheel();
-    if (type === "action_skip") handleSkip();
+    if (type === "update_heat") {
+      setHeatLevel(payload);
+      return;
+    }
+
+    if (type === "trigger_spin") {
+      spinTheWheel();
+      return;
+    }
 
     if (type === "player_left") {
-      setPlayers((prev) => prev.filter((p) => p.id !== playerId));
+      setPlayers((prev) => {
+        const next = prev.filter((p) => p.id !== playerId);
+        // if controller left during lobby/waiting, pick a new one and sync
+        ensureController(next);
+        return next;
+      });
+      return;
     }
 
-    if (type === "vote_like") setVotes((v) => ({ ...v, likes: v.likes + 1 }));
-    if (type === "vote_dislike") setVotes((v) => ({ ...v, dislikes: v.dislikes + 1 }));
+    // IMPORTANT FIX:
+    // Ignore voting/skip events unless we are currently in CHALLENGE.
+    // This prevents "phantom" confetti / group shot triggered by votes sent during waiting/spinning/revealing.
+    if (gs !== "challenge") return;
+
+    if (type === "action_skip") {
+      handleSkip();
+      return;
+    }
+
+    if (type === "vote_like") {
+      setVotes((v) => ({ ...v, likes: v.likes + 1 }));
+      return;
+    }
+
+    if (type === "vote_dislike") {
+      setVotes((v) => ({ ...v, dislikes: v.dislikes + 1 }));
+      return;
+    }
 
     if (type === "vote_shot") {
       setVotes((v) => {
@@ -326,6 +422,7 @@ export const useHostGameLogic = (
         if (newShots >= threshold && !stateRef.current.shotVoteMode) triggerGroupShot();
         return { ...v, shots: newShots };
       });
+      return;
     }
   };
 
@@ -335,7 +432,6 @@ export const useHostGameLogic = (
 
     const hostId = authUser.id;
 
-    // A. Game State Channel (Sync Only)
     const gsChannel = supabase
       .channel(`gamestate_host_${hostId}`)
       .on(
@@ -346,26 +442,28 @@ export const useHostGameLogic = (
           const nextSid: string | null = next?.session_id ?? null;
 
           if (nextSid && nextSid !== stateRef.current.sessionId) {
-            // Session changed remotely
             setSessionId(nextSid);
             setPlayers([]);
             setGameState("lobby");
+            resetVotes();
             return;
           }
 
           if (next.status) setGameState(next.status);
           if (typeof next.heat_level === "number") setHeatLevel(next.heat_level);
+
           if (next.current_player_id) {
             const p = stateRef.current.players.find((p) => p.id === next.current_player_id);
-            if (p && p.id !== stateRef.current.selectedPlayer?.id) {
-              setSelectedPlayer(p);
-            }
+            if (p && p.id !== stateRef.current.selectedPlayer?.id) setSelectedPlayer(p);
+          }
+          if (next.last_active_player_id) {
+            const lp = stateRef.current.players.find((p) => p.id === next.last_active_player_id);
+            if (lp && lp.id !== stateRef.current.lastActivePlayer?.id) setLastActivePlayer(lp);
           }
         }
       )
       .subscribe();
 
-    // B. Room Channel (Players + Broadcasts)
     const roomChannel = supabase
       .channel(`room_${hostId}`)
       .on(
@@ -377,8 +475,9 @@ export const useHostGameLogic = (
 
           if (np.session_id === sidNow && np.is_active) {
             setPlayers((prev) => {
-              if (prev.some((p) => p.id === np.id)) return prev;
-              return [...prev, np];
+              const next = prev.some((p) => p.id === np.id) ? prev : [...prev, np];
+              ensureController(next);
+              return next;
             });
           }
         }
@@ -390,14 +489,16 @@ export const useHostGameLogic = (
           const up = payload.new as any;
           const sidNow = stateRef.current.sessionId;
 
-          if (up.session_id !== sidNow || !up.is_active) {
-            setPlayers((prev) => prev.filter((p) => p.id !== up.id));
-            return;
-          }
-
           setPlayers((prev) => {
-            const exists = prev.some((p) => p.id === up.id);
-            return exists ? prev.map((p) => (p.id === up.id ? up : p)) : [...prev, up];
+            let next: Player[];
+            if (up.session_id !== sidNow || !up.is_active) {
+              next = prev.filter((p) => p.id !== up.id);
+            } else {
+              const exists = prev.some((p) => p.id === up.id);
+              next = exists ? prev.map((p) => (p.id === up.id ? up : p)) : [...prev, up];
+            }
+            ensureController(next);
+            return next;
           });
         }
       )
@@ -406,65 +507,68 @@ export const useHostGameLogic = (
         { event: "DELETE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
         (payload) => {
           const deletedId = (payload.old as any)?.id;
-          if (deletedId) setPlayers((prev) => prev.filter((p) => p.id !== deletedId));
+          if (!deletedId) return;
+          setPlayers((prev) => {
+            const next = prev.filter((p) => p.id !== deletedId);
+            ensureController(next);
+            return next;
+          });
         }
       )
       .on("broadcast", { event: "game_event" }, (event) => handleGameEvent(event.payload))
       .subscribe((status) => {
-        console.log("Realtime connection status:", status);
         setIsConnected(status === "SUBSCRIBED");
       });
 
     return () => {
-      console.log("Cleaning up channels");
       supabase.removeChannel(gsChannel);
       supabase.removeChannel(roomChannel);
     };
-  }, [authUser, sessionId]); // Re-subscribe if auth or session changes
+  }, [authUser, sessionId]);
 
-  // --- Sync Game State (Debounced) ---
-  const syncGameStateToDB = async (
-    status: string,
-    currentPlayerId: string | null = null,
-    challenge: any = null,
-    forceControllerId: string | undefined | null = undefined
-  ) => {
-    const au = stateRef.current.authUser;
-    if (!au) return;
-
-    let activeControllerId =
-      forceControllerId !== undefined ? forceControllerId : stateRef.current.lastActivePlayer?.id;
-
-    if (!activeControllerId && stateRef.current.players.length > 0) {
-      activeControllerId = stateRef.current.players[0].id;
-    }
-
-    const sid = stateRef.current.sessionId;
-
-    await supabase.from("game_states").upsert({
-      host_id: au.id,
-      session_id: sid,
-      status,
-      current_player_id: currentPlayerId,
-      last_active_player_id: activeControllerId,
-      heat_level: stateRef.current.heatLevel,
-      challenge_text: challenge?.content || null,
-      challenge_type: stateRef.current.challengeType,
-      updated_at: new Date().toISOString(),
-    });
-  };
-
+  // --- DB Sync (Debounced) ---
   useEffect(() => {
-    if (authUser && sessionId) {
-      const t = setTimeout(() => {
-        syncGameStateToDB(gameState, selectedPlayer?.id ?? null, currentChallenge);
-      }, 100);
-      return () => clearTimeout(t);
-    }
+    if (!authUser || !sessionId) return;
+
+    const controllerId =
+      lastActivePlayer?.id ?? (players.length > 0 ? players[0].id : null);
+
+    const t = setTimeout(() => {
+      void syncGameStateToDB({
+        status: gameState,
+        currentPlayerId: selectedPlayer?.id ?? null,
+        controllerId,
+        heat: heatLevel,
+        sid: sessionId,
+        challengeText: currentChallenge?.content ?? null,
+        challengeT: challengeType,
+      });
+    }, 120);
+
+    return () => clearTimeout(t);
+  }, [
+    authUser,
+    sessionId,
+    gameState,
+    selectedPlayer?.id,
+    lastActivePlayer?.id,
+    players.length,
+    heatLevel,
+    challengeType,
+    currentChallenge?.content,
+  ]);
+
+  // Reset votes when leaving challenge AND also when entering a new round stage
+  useEffect(() => {
     if (gameState !== "challenge") {
-      setVotes({ likes: 0, dislikes: 0, shots: 0 });
+      resetVotes();
+    } else {
+      // entering challenge: start clean + unlock end-of-round
+      roundEndLockRef.current = false;
+      resetVotes();
     }
-  }, [gameState, selectedPlayer, currentChallenge, heatLevel, sessionId, authUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState, sessionId]);
 
   // URL setup
   useEffect(() => {
@@ -473,9 +577,11 @@ export const useHostGameLogic = (
     }
   }, [authUser]);
 
-  // Auto votes
+  // Auto votes (only meaningful in challenge; guarded by roundEndLockRef)
   useEffect(() => {
     if (gameState !== "challenge") return;
+    if (roundEndLockRef.current) return;
+
     const voters = Math.max(1, players.length - 1);
     if (votes.likes > voters * 0.5) handleDone();
     else if (votes.dislikes > voters * 0.5) handleSkip();
@@ -521,7 +627,6 @@ export const useHostGameLogic = (
     if (!au) return;
     if (askConfirm && !confirm("לסיים משחק ולהתחיל חדש?")) return;
 
-    // Hard reset: Delete players
     await supabase.from("players").delete().eq("host_id", au.id);
 
     const newSid = genSessionId();
@@ -546,7 +651,8 @@ export const useHostGameLogic = (
     setCurrentChallenge(null);
     setChallengeType(null);
     setHeatLevel(1);
-    setVotes({ likes: 0, dislikes: 0, shots: 0 });
+    resetVotes();
+    roundEndLockRef.current = false;
   };
 
   const handleLogout = async () => {
