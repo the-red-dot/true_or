@@ -259,7 +259,11 @@ export const useHostGameLogic = (
 
       // Listen to players AND broadcasts
       channel = supabase
-        .channel(`room_${hostId}`)
+        .channel(`room_${hostId}`, {
+          config: {
+            broadcast: { self: false },
+          },
+        })
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
@@ -407,7 +411,7 @@ export const useHostGameLogic = (
         body: JSON.stringify({
           playerName: selectedPlayer.name,
           playerGender: selectedPlayer.gender,
-          players: players, // <--- כאן התיקון: שליחת כל השחקנים לשרת
+          players: players, // <--- CRITICAL FIX: Sending players list for victim selection
           heatLevel: heatLevel,
           type: challengeType,
           previousChallenges: [],
