@@ -164,16 +164,14 @@ export default function TruthOrDareGame() {
             </div>
 
             <div className="mt-12 bg-white/5 backdrop-blur-xl p-4 rounded-2xl border border-white/10 flex items-center gap-6">
-              {(gameState === "lobby" || gameState === "waiting_for_spin") && players.length >= 2 && (
+              {players.length >= 2 && (
                 <button
                   onClick={spinTheWheel}
                   className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-500 rounded-xl font-bold flex items-center gap-2 hover:scale-105 transition-transform shadow-lg"
                 >
-                  <Play className="fill-white" /> 
-                  {gameState === "lobby" ? "התחל משחק" : "תפתיע אותנו! 🎲"}
+                  <Play className="fill-white" /> התחל משחק
                 </button>
               )}
-              
               <span className="text-cyan-400 font-bold flex items-center gap-2 border-r border-white/20 pr-6 mr-2">
                 <Flame /> {heatLevel}
               </span>
@@ -183,9 +181,8 @@ export default function TruthOrDareGame() {
                 max="10"
                 value={heatLevel}
                 onChange={(e) => setHeatLevel(parseInt(e.target.value))}
-                className="w-32 accent-pink-500 cursor-pointer"
+                className="w-32 accent-pink-500"
               />
-              
               <button
                 onClick={() => endGame(true)}
                 className="p-2 hover:bg-red-900/50 rounded-lg text-red-300 ml-4 flex items-center gap-2"
@@ -236,28 +233,28 @@ export default function TruthOrDareGame() {
               <motion.div
                 initial={{ y: 50, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="w-full max-w-5xl px-4 relative z-20 mt-10" // Added mt-10 for extra top spacing
+                className="w-full max-w-5xl px-4 relative z-20"
               >
-                {/* --- Active Player Avatar Header (Floating) --- */}
-                <div className="absolute -top-24 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center drop-shadow-2xl">
-                   <div className="w-40 h-40 rounded-full border-4 border-white/80 shadow-[0_0_50px_rgba(236,72,153,0.5)] overflow-hidden bg-black relative z-10">
+                {/* --- Active Player Avatar Header --- */}
+                <div className="absolute -top-16 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center">
+                   <div className="w-32 h-32 rounded-full border-4 border-white shadow-lg overflow-hidden bg-black relative z-10">
                       <img src={selectedPlayer.avatar} className="w-full h-full object-cover" alt="Active Player" />
                    </div>
-                   <div className="mt-3 bg-black/80 px-6 py-2 rounded-full text-white font-bold text-xl backdrop-blur-md border border-white/20 shadow-xl tracking-wider">
+                   <div className="mt-2 bg-black/80 px-4 py-1 rounded-full text-white font-bold text-lg backdrop-blur-sm shadow-md border border-white/10">
                       {selectedPlayer.name}
                    </div>
                 </div>
 
                 {/* --- Challenge Card --- */}
-                <div className="bg-gray-900/95 backdrop-blur-2xl border border-white/10 p-12 rounded-[3rem] text-center shadow-2xl relative overflow-visible pt-48 mt-12">
-                  <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-t-[3rem]" />
+                <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-12 rounded-[3rem] text-center shadow-2xl relative overflow-hidden pt-40">
+                  <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-pink-500 to-cyan-500" />
                   
-                  <div className="flex justify-center mb-10">
+                  <div className="flex justify-center mb-8">
                     <span
-                      className={`text-6xl font-black px-10 py-4 rounded-full shadow-2xl transform -rotate-2 border-2 ${
+                      className={`text-5xl font-black px-8 py-3 rounded-full shadow-lg ${
                         challengeType === "אמת"
-                          ? "bg-blue-600/20 text-blue-300 border-blue-400/50 shadow-blue-500/20"
-                          : "bg-pink-600/20 text-pink-300 border-pink-400/50 shadow-pink-500/20"
+                          ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                          : "bg-pink-500/20 text-pink-400 border border-pink-500/30"
                       }`}
                     >
                       {challengeType}
@@ -265,40 +262,42 @@ export default function TruthOrDareGame() {
                   </div>
                   
                   <h3
-                    className="text-5xl md:text-7xl font-black leading-tight mb-12 drop-shadow-lg text-white/90"
+                    className="text-5xl md:text-7xl font-black leading-tight mb-12 drop-shadow-lg"
                     style={{ direction: "rtl" }}
                   >
                     {currentChallenge.content}
                   </h3>
 
-                  <div className="flex items-center gap-6 max-w-2xl mx-auto bg-black/40 p-4 rounded-full border border-white/5">
-                    <ThumbsUp className="text-green-500 w-10 h-10" />
-                    <div className="flex-1 h-4 bg-gray-800 rounded-full overflow-hidden">
+                  <div className="flex items-center gap-4 max-w-lg mx-auto bg-black/50 p-2 rounded-full">
+                    <ThumbsUp className="text-green-500" />
+                    <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden">
                       <div
-                        className="bg-gradient-to-r from-green-500 to-green-400 h-full transition-all duration-500 ease-out shadow-[0_0_20px_rgba(34,197,94,0.5)]"
+                        className="bg-green-500 h-full transition-all duration-300"
                         style={{
                           width: `${(votes.likes / Math.max(1, players.length - 1)) * 100}%`,
                         }}
                       />
                     </div>
-                    <div className="flex-1 h-4 bg-gray-800 rounded-full overflow-hidden flex justify-end">
+                    <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden flex justify-end">
                       <div
-                        className="bg-gradient-to-l from-red-500 to-red-400 h-full transition-all duration-500 ease-out shadow-[0_0_20px_rgba(239,68,68,0.5)]"
+                        className="bg-red-500 h-full transition-all duration-300"
                         style={{
                           width: `${(votes.dislikes / Math.max(1, players.length - 1)) * 100}%`,
                         }}
                       />
                     </div>
-                    <ThumbsDown className="text-red-500 w-10 h-10" />
+                    <ThumbsDown className="text-red-500" />
                   </div>
 
                   {currentChallenge.usedModel && (
-                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 text-xs text-gray-500 uppercase tracking-[0.2em] opacity-40 hover:opacity-100 transition-opacity">
-                      <Cpu size={12} /> <span>{currentChallenge.usedModel}</span>
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 text-[10px] text-gray-500 uppercase tracking-widest opacity-30">
+                      <Cpu size={10} /> <span>{currentChallenge.usedModel}</span>
                     </div>
                   )}
                 </div>
               </motion.div>
+              
+              {/* Removed the bottom players list to keep the screen clean */}
             </div>
           )}
 

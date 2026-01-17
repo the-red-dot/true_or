@@ -1,4 +1,5 @@
 // src/app/hooks/useHostGameLogic.ts
+
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/app/lib/supabase";
 import { User, RealtimeChannel } from "@supabase/supabase-js";
@@ -71,11 +72,12 @@ export const useHostGameLogic = (
     return p?.session_id === sid && p?.is_active === true;
   };
 
-  // State Ref
-  const stateRef = useRef({ players, lastActivePlayer, gameState, sessionId, selectedPlayer });
+  // State Ref - Critical for Realtime Callbacks to access current state
+  const stateRef = useRef({ players, lastActivePlayer, gameState, sessionId, selectedPlayer, shotVoteMode });
+  
   useEffect(() => {
-    stateRef.current = { players, lastActivePlayer, gameState, sessionId, selectedPlayer };
-  }, [players, lastActivePlayer, gameState, sessionId, selectedPlayer]);
+    stateRef.current = { players, lastActivePlayer, gameState, sessionId, selectedPlayer, shotVoteMode };
+  }, [players, lastActivePlayer, gameState, sessionId, selectedPlayer, shotVoteMode]);
 
   // --- Sync Logic ---
   const syncGameStateToDB = async (
@@ -89,9 +91,9 @@ export const useHostGameLogic = (
     let activeControllerId =
       forceControllerId !== undefined ? forceControllerId : lastActivePlayer?.id;
 
-    // אם אין בקר, ננסה לקחת את הראשון ברשימה
-    if (!activeControllerId && players.length > 0) {
-      activeControllerId = players[0].id;
+    // Fail-safe: If no controller, pick first player
+    if (!activeControllerId && stateRef.current.players.length > 0) {
+      activeControllerId = stateRef.current.players[0].id;
     }
 
     const sid = sessionId ?? stateRef.current.sessionId;
@@ -109,39 +111,11 @@ export const useHostGameLogic = (
     });
   };
 
-  // --- Turn Management & Player Leave Handling ---
+  // --- Turn Management ---
   useEffect(() => {
-    // אם אין מספיק שחקנים והמשחק לא בלובי, נחזיר ללובי
-    if (players.length < 2 && gameState !== "lobby") {
-       // אם נשאר שחקן אחד או 0, אי אפשר לשחק
-       if (players.length === 0) {
-          if (lastActivePlayer !== null) setLastActivePlayer(null);
-       }
-       // אופציונלי: להחזיר ללובי אם יש פחות מ-2 שחקנים
-       // setGameState("lobby"); 
-       // syncGameStateToDB("lobby", null, null, players[0]?.id);
-       return;
-    }
-
-    // בדיקה: האם השחקן ש"מחזיק בשרביט" (lastActivePlayer) עדיין במשחק?
-    const controllerStillHere =
-      lastActivePlayer && players.find((p) => p.id === lastActivePlayer.id);
-
-    if (!controllerStillHere && players.length > 0) {
-      // אם הוא יצא, נעביר את השרביט לשחקן הראשון ברשימה
-      const newController = players[0];
-      setLastActivePlayer(newController);
-      
-      // עדכון DB בשרביט החדש
-      syncGameStateToDB(gameState, selectedPlayer?.id, currentChallenge, newController.id);
-    } else {
-      // עדכון שגרתי
-      if (gameState === "lobby" || gameState === "waiting_for_spin") {
-        syncGameStateToDB(gameState, selectedPlayer?.id, currentChallenge, lastActivePlayer?.id);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [players.length, gameState]); // רץ בכל שינוי במספר השחקנים
+    // If not enough players and game is active, maybe pause or reset (optional logic)
+    // We keep it simple here to avoid loops
+  }, [players.length]); 
 
   // --- Realtime Setup ---
   useEffect(() => {
@@ -159,29 +133,28 @@ export const useHostGameLogic = (
         const data = gs.data;
         setSessionId(data.session_id);
         if (data.heat_level) setHeatLevel(data.heat_level);
-        if (data.status) setGameState(data.status as any); // שחזור סטטוס
+        if (data.status) setGameState(data.status as any);
         if (data.challenge_type) setChallengeType(data.challenge_type as any);
         if (data.challenge_text) setCurrentChallenge({ content: data.challenge_text, spiciness: data.heat_level, themeColor: "", usedModel: "Restored" });
-        
         return { sid: data.session_id, data };
       }
 
-      // יצירת חדש
+      // Create New
+      const newSid = genSessionId();
       const created = await supabase
         .from("game_states")
         .upsert({
           host_id: hostId,
           status: "lobby",
           heat_level: 1,
-          session_id: genSessionId(),
+          session_id: newSid,
           updated_at: new Date().toISOString(),
         })
         .select()
         .single();
 
-      const sid = created.data?.session_id ?? null;
-      setSessionId(sid);
-      return { sid, data: created.data };
+      setSessionId(newSid);
+      return { sid: newSid, data: created.data };
     };
 
     const loadPlayersForSession = async (hostId: string, sid: string) => {
@@ -204,7 +177,7 @@ export const useHostGameLogic = (
       const loadedPlayers = await loadPlayersForSession(hostId, sid);
       setPlayers(loadedPlayers);
 
-      // שחזור: מיהו השחקן הנבחר ומיהו המפעיל?
+      // Restore active/selected
       if (gsData) {
           if (gsData.current_player_id) {
               const selected = loadedPlayers.find(p => p.id === gsData.current_player_id);
@@ -219,7 +192,7 @@ export const useHostGameLogic = (
           }
       }
 
-      // Listen to game_states updates (SYNC)
+      // --- Game State Channel (Sync Only) ---
       gsChannel = supabase
         .channel(`gamestate_host_${hostId}`)
         .on(
@@ -229,24 +202,19 @@ export const useHostGameLogic = (
             const next = payload.new as any;
             const nextSid: string | null = next?.session_id ?? null;
 
-            // אם ה-Session השתנה (משחק חדש)
+            // Detect remote session change (rare for host, but good for safety)
             if (nextSid && nextSid !== stateRef.current.sessionId) {
               setSessionId(nextSid);
-              setPlayers([]);
+              setPlayers([]); // Clear local players on session change
               setGameState("lobby");
-              setLastActivePlayer(null);
-              setSelectedPlayer(null);
-              setCurrentChallenge(null);
-              setChallengeType(null);
-              setHeatLevel(next?.heat_level ?? 1);
               return;
             }
 
-            // עדכונים שוטפים
+            // Sync values
             if (next.status) setGameState(next.status);
             if (typeof next.heat_level === "number") setHeatLevel(next.heat_level);
             
-            // ** תיקון קריטי: עדכון שחקן נבחר בזמן אמת אם השתנה **
+            // Sync current player if changed externally
             if (next.current_player_id) {
                 const p = stateRef.current.players.find(p => p.id === next.current_player_id);
                 if (p && p.id !== stateRef.current.selectedPlayer?.id) {
@@ -257,21 +225,20 @@ export const useHostGameLogic = (
         )
         .subscribe();
 
-      // Listen to players AND broadcasts
+      // --- Players Channel (Inserts/Updates/Deletes) ---
       channel = supabase
-        .channel(`room_${hostId}`, {
-          config: {
-            broadcast: { self: false },
-          },
-        })
+        .channel(`room_${hostId}`)
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
           (payload) => {
             const np = payload.new as any;
             const sidNow = stateRef.current.sessionId;
-            if (isActiveRow(np, sidNow)) {
+            
+            // Strict check: Player must belong to CURRENT session
+            if (np.session_id === sidNow && np.is_active) {
                  setPlayers((prev) => {
+                    // Avoid duplicates
                     if (prev.some(p => p.id === np.id)) return prev;
                     return [...prev, np];
                  });
@@ -284,13 +251,21 @@ export const useHostGameLogic = (
           (payload) => {
             const up = payload.new as any;
             const sidNow = stateRef.current.sessionId;
-            if (!isActiveRow(up, sidNow)) {
+            
+            // If player moved to a DIFFERENT session or became inactive -> Remove them
+            if (up.session_id !== sidNow || !up.is_active) {
               setPlayers((prev) => prev.filter((p) => p.id !== up.id));
               return;
             }
+
+            // If player matches current session -> Update or Add them
             setPlayers((prev) => {
               const exists = prev.some((p) => p.id === up.id);
-              return exists ? prev.map((p) => (p.id === up.id ? up : p)) : [...prev, up];
+              if (exists) {
+                return prev.map((p) => (p.id === up.id ? up : p));
+              } else {
+                return [...prev, up];
+              }
             });
           }
         )
@@ -306,27 +281,33 @@ export const useHostGameLogic = (
         .subscribe((status) => setIsConnected(status === "SUBSCRIBED"));
     };
 
+    // Broadcast Handler
     const handleGameEvent = (data: any) => {
       const { type, payload, playerId } = data;
-      // ... same logic as before for emojis ...
+      
       if (type === "emoji") {
         const id = Math.random().toString(36);
         const randomX = Math.random() * 80 + 10;
         setReactions((prev) => [...prev, { id, emoji: payload, playerId, x: randomX }]);
         setTimeout(() => setReactions((prev) => prev.filter((r) => r.id !== id)), 4000);
       }
-      // ... rest of events ...
+      
       if (type === "update_heat") setHeatLevel(payload);
       if (type === "trigger_spin") spinTheWheel();
       if (type === "action_skip") handleSkip();
-      if (type === "player_left") setPlayers((prev) => prev.filter((p) => p.id !== playerId));
+      
+      if (type === "player_left") {
+          setPlayers((prev) => prev.filter((p) => p.id !== playerId));
+      }
+
       if (type === "vote_like") setVotes((v) => ({ ...v, likes: v.likes + 1 }));
       if (type === "vote_dislike") setVotes((v) => ({ ...v, dislikes: v.dislikes + 1 }));
+      
       if (type === "vote_shot") {
         setVotes((v) => {
           const newShots = v.shots + 1;
           const threshold = Math.max(2, Math.floor(stateRef.current.players.length / 2));
-          if (newShots >= threshold && !shotVoteMode) triggerGroupShot();
+          if (newShots >= threshold && !stateRef.current.shotVoteMode) triggerGroupShot(); 
           return { ...v, shots: newShots };
         });
       }
@@ -353,11 +334,14 @@ export const useHostGameLogic = (
     };
   }, []); // Init only
 
-  // --- Game Flow & Sync Updates ---
-  // Sync state changes to DB only if I am the Host and we have a session
+  // --- Game Flow Sync ---
   useEffect(() => {
     if (authUser && sessionId) {
-      syncGameStateToDB(gameState, selectedPlayer?.id, currentChallenge);
+      // Debounce slightly to avoid rapid DB spam
+      const t = setTimeout(() => {
+          syncGameStateToDB(gameState, selectedPlayer?.id, currentChallenge);
+      }, 100);
+      return () => clearTimeout(t);
     }
     if (gameState !== "challenge") {
       setVotes({ likes: 0, dislikes: 0, shots: 0 });
@@ -380,15 +364,31 @@ export const useHostGameLogic = (
   }, [votes, players.length, gameState]);
 
   // --- Actions ---
+
   const spinTheWheel = () => {
+    // ALWAYS use stateRef to get the most up-to-date players list during event execution
     const currentPlayers = stateRef.current.players;
-    if (currentPlayers.length < 2) return alert("צריך לפחות 2 שחקנים כדי להתחיל!");
+    
+    if (currentPlayers.length < 2) {
+        // Fallback: If UI shows players but Ref is empty, try force refresh
+        handleManualRefresh();
+        if (currentPlayers.length < 2) return alert("צריך לפחות 2 שחקנים כדי להתחיל!");
+    }
+
+    // Only allow spin if we are in a valid state
+    if (gameState !== 'lobby' && gameState !== 'waiting_for_spin') {
+        return;
+    }
 
     setGameState("spinning");
     playSpinSound();
 
     setTimeout(() => {
-      const randomPlayer = currentPlayers[Math.floor(Math.random() * currentPlayers.length)];
+      // Re-fetch players from ref inside timeout to be safe
+      const freshPlayers = stateRef.current.players;
+      if (freshPlayers.length === 0) return setGameState("lobby");
+
+      const randomPlayer = freshPlayers[Math.floor(Math.random() * freshPlayers.length)];
       setSelectedPlayer(randomPlayer);
       setChallengeType(Math.random() > 0.5 ? "אמת" : "חובה");
       setGameState("spotlight");
@@ -402,7 +402,7 @@ export const useHostGameLogic = (
     }
   }, [gameState]);
 
-  // AI Generation (Modified to include players)
+  // AI Generation
   useEffect(() => {
     if (gameState === "revealing" && selectedPlayer && challengeType && authUser) {
       setLoadingAI(true);
@@ -411,7 +411,7 @@ export const useHostGameLogic = (
         body: JSON.stringify({
           playerName: selectedPlayer.name,
           playerGender: selectedPlayer.gender,
-          players: players, // <--- CRITICAL FIX: Sending players list for victim selection
+          players: players,
           heatLevel: heatLevel,
           type: challengeType,
           previousChallenges: [],
@@ -422,7 +422,10 @@ export const useHostGameLogic = (
           setCurrentChallenge(data);
           setGameState("challenge");
         })
-        .catch(() => setGameState("challenge"))
+        .catch((err) => {
+            console.error(err);
+            setGameState("challenge"); // Recover
+        })
         .finally(() => setLoadingAI(false));
     }
   }, [gameState]);
@@ -467,15 +470,25 @@ export const useHostGameLogic = (
       .order("created_at", { ascending: true });
 
     if (data) {
+      console.log("Manual Refresh Data:", data);
       setPlayers(data as Player[]);
+      // Ensure controller exists
       if (!lastActivePlayer && data.length > 0) setLastActivePlayer(data[0] as Player);
     }
   };
 
+  // --- STABILITY FIX: HARD RESET ---
   const endGame = async (askConfirm = true) => {
     if (!authUser) return;
     if (askConfirm && !confirm("לסיים משחק ולהתחיל חדש?")) return;
+
+    // 1. DELETE ALL PLAYERS for this host.
+    // This forces a "Fresh Start" in the DB and forces players to Re-Insert.
+    await supabase.from("players").delete().eq("host_id", authUser.id);
+
     const newSid = genSessionId();
+    
+    // 2. Reset Game State in DB
     await supabase.from("game_states").upsert({
       host_id: authUser.id,
       session_id: newSid,
@@ -487,6 +500,8 @@ export const useHostGameLogic = (
       heat_level: 1,
       updated_at: new Date().toISOString(),
     });
+
+    // 3. Reset Local State
     setSessionId(newSid);
     setPlayers([]);
     setGameState("lobby");
@@ -495,6 +510,7 @@ export const useHostGameLogic = (
     setCurrentChallenge(null);
     setChallengeType(null);
     setHeatLevel(1);
+    setVotes({ likes: 0, dislikes: 0, shots: 0 });
   };
 
   const handleLogout = async () => {
