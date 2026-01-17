@@ -47,7 +47,7 @@ export const useHostGameLogic = (
 
   // Auth & Connection
   const [authUser, setAuthUser] = useState<User | null>(null);
-  const [isConnected, setIsConnected] = useState<boolean>(true);
+  const [isConnected, setIsConnected] = useState<boolean>(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
   // Interactive
@@ -72,217 +72,206 @@ export const useHostGameLogic = (
     return p?.session_id === sid && p?.is_active === true;
   };
 
-  // State Ref - Critical for Realtime Callbacks to access current state
+  // State Ref - Critical for Realtime Callbacks
   const stateRef = useRef({ players, lastActivePlayer, gameState, sessionId, selectedPlayer, shotVoteMode });
   
   useEffect(() => {
     stateRef.current = { players, lastActivePlayer, gameState, sessionId, selectedPlayer, shotVoteMode };
   }, [players, lastActivePlayer, gameState, sessionId, selectedPlayer, shotVoteMode]);
 
-  // --- Sync Logic ---
-  const syncGameStateToDB = async (
-    status: string,
-    currentPlayerId: string | null = null,
-    challenge: any = null,
-    forceControllerId: string | undefined | null = undefined
-  ) => {
+  // --- 1. Auth Initialization ---
+  useEffect(() => {
+    const initAuth = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) setAuthUser(user);
+    };
+    initAuth();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        setAuthUser(session.user);
+      } else {
+        setAuthUser(null);
+        setPlayers([]);
+        setSessionId(null);
+        setJoinUrl("");
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  // --- 2. Load Game Session Data ---
+  useEffect(() => {
     if (!authUser) return;
 
-    let activeControllerId =
-      forceControllerId !== undefined ? forceControllerId : lastActivePlayer?.id;
+    const loadGame = async () => {
+        // Fetch existing game state
+        const gs = await supabase
+            .from("game_states")
+            .select("*")
+            .eq("host_id", authUser.id)
+            .single();
 
-    // Fail-safe: If no controller, pick first player
-    if (!activeControllerId && stateRef.current.players.length > 0) {
-      activeControllerId = stateRef.current.players[0].id;
-    }
+        let currentSid = null;
 
-    const sid = sessionId ?? stateRef.current.sessionId;
+        if (gs.data?.session_id) {
+            // Restore existing
+            const data = gs.data;
+            currentSid = data.session_id;
+            setSessionId(currentSid);
+            if (data.heat_level) setHeatLevel(data.heat_level);
+            if (data.status) setGameState(data.status as any);
+            if (data.challenge_type) setChallengeType(data.challenge_type as any);
+            if (data.challenge_text) setCurrentChallenge({ content: data.challenge_text, spiciness: data.heat_level, themeColor: "", usedModel: "Restored" });
+        } else {
+            // Create new
+            currentSid = genSessionId();
+            await supabase
+                .from("game_states")
+                .upsert({
+                    host_id: authUser.id,
+                    status: "lobby",
+                    heat_level: 1,
+                    session_id: currentSid,
+                    updated_at: new Date().toISOString(),
+                });
+            setSessionId(currentSid);
+        }
 
-    await supabase.from("game_states").upsert({
-      host_id: authUser.id,
-      session_id: sid,
-      status,
-      current_player_id: currentPlayerId,
-      last_active_player_id: activeControllerId,
-      heat_level: heatLevel,
-      challenge_text: challenge?.content || null,
-      challenge_type: challengeType,
-      updated_at: new Date().toISOString(),
-    });
-  };
+        // Load players for this session
+        if (currentSid) {
+             const { data: loadedPlayers } = await supabase
+                .from("players")
+                .select("*")
+                .eq("host_id", authUser.id)
+                .eq("session_id", currentSid)
+                .eq("is_active", true)
+                .order("created_at", { ascending: true });
 
-  // --- Turn Management ---
-  useEffect(() => {
-    // If not enough players and game is active, maybe pause or reset (optional logic)
-    // We keep it simple here to avoid loops
-  }, [players.length]); 
-
-  // --- Realtime Setup ---
-  useEffect(() => {
-    let channel: RealtimeChannel | null = null;
-    let gsChannel: RealtimeChannel | null = null;
-
-    const loadOrCreateGameState = async (hostId: string) => {
-      const gs = await supabase
-        .from("game_states")
-        .select("*")
-        .eq("host_id", hostId)
-        .single();
-
-      if (gs.data?.session_id) {
-        const data = gs.data;
-        setSessionId(data.session_id);
-        if (data.heat_level) setHeatLevel(data.heat_level);
-        if (data.status) setGameState(data.status as any);
-        if (data.challenge_type) setChallengeType(data.challenge_type as any);
-        if (data.challenge_text) setCurrentChallenge({ content: data.challenge_text, spiciness: data.heat_level, themeColor: "", usedModel: "Restored" });
-        return { sid: data.session_id, data };
-      }
-
-      // Create New
-      const newSid = genSessionId();
-      const created = await supabase
-        .from("game_states")
-        .upsert({
-          host_id: hostId,
-          status: "lobby",
-          heat_level: 1,
-          session_id: newSid,
-          updated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      setSessionId(newSid);
-      return { sid: newSid, data: created.data };
+             if (loadedPlayers) {
+                 setPlayers(loadedPlayers as Player[]);
+                 
+                 // Restore context if needed
+                 if (gs.data) {
+                    if (gs.data.current_player_id) {
+                        const selected = (loadedPlayers as Player[]).find(p => p.id === gs.data.current_player_id);
+                        if (selected) setSelectedPlayer(selected);
+                    }
+                    if (gs.data.last_active_player_id) {
+                        const active = (loadedPlayers as Player[]).find(p => p.id === gs.data.last_active_player_id);
+                        if (active) setLastActivePlayer(active);
+                        else if (loadedPlayers.length > 0) setLastActivePlayer(loadedPlayers[0] as Player);
+                    } else if (loadedPlayers.length > 0) {
+                        setLastActivePlayer(loadedPlayers[0] as Player);
+                    }
+                 }
+             }
+        }
     };
 
-    const loadPlayersForSession = async (hostId: string, sid: string) => {
-      const { data } = await supabase
-        .from("players")
-        .select("*")
-        .eq("host_id", hostId)
-        .eq("session_id", sid)
-        .eq("is_active", true)
-        .order("created_at", { ascending: true });
+    loadGame();
+  }, [authUser]);
 
-      if (data) return data as Player[];
-      return [];
-    };
+  // --- 3. Realtime Subscriptions (Starts ONLY after SessionID is ready) ---
+  useEffect(() => {
+    if (!authUser || !sessionId) return;
 
-    const setupRealtime = async (hostId: string) => {
-      const { sid, data: gsData } = await loadOrCreateGameState(hostId);
-      if (!sid) return;
+    const hostId = authUser.id;
 
-      const loadedPlayers = await loadPlayersForSession(hostId, sid);
-      setPlayers(loadedPlayers);
-
-      // Restore active/selected
-      if (gsData) {
-          if (gsData.current_player_id) {
-              const selected = loadedPlayers.find(p => p.id === gsData.current_player_id);
-              if (selected) setSelectedPlayer(selected);
-          }
-          if (gsData.last_active_player_id) {
-              const active = loadedPlayers.find(p => p.id === gsData.last_active_player_id);
-              if (active) setLastActivePlayer(active);
-              else if (loadedPlayers.length > 0) setLastActivePlayer(loadedPlayers[0]);
-          } else if (loadedPlayers.length > 0) {
-              setLastActivePlayer(loadedPlayers[0]);
-          }
-      }
-
-      // --- Game State Channel (Sync Only) ---
-      gsChannel = supabase
+    // A. Game State Channel (Sync Only)
+    const gsChannel = supabase
         .channel(`gamestate_host_${hostId}`)
         .on(
-          "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "game_states", filter: `host_id=eq.${hostId}` },
-          (payload) => {
-            const next = payload.new as any;
-            const nextSid: string | null = next?.session_id ?? null;
+            "postgres_changes",
+            { event: "UPDATE", schema: "public", table: "game_states", filter: `host_id=eq.${hostId}` },
+            (payload) => {
+                const next = payload.new as any;
+                const nextSid: string | null = next?.session_id ?? null;
 
-            // Detect remote session change (rare for host, but good for safety)
-            if (nextSid && nextSid !== stateRef.current.sessionId) {
-              setSessionId(nextSid);
-              setPlayers([]); // Clear local players on session change
-              setGameState("lobby");
-              return;
-            }
-
-            // Sync values
-            if (next.status) setGameState(next.status);
-            if (typeof next.heat_level === "number") setHeatLevel(next.heat_level);
-            
-            // Sync current player if changed externally
-            if (next.current_player_id) {
-                const p = stateRef.current.players.find(p => p.id === next.current_player_id);
-                if (p && p.id !== stateRef.current.selectedPlayer?.id) {
-                    setSelectedPlayer(p);
+                if (nextSid && nextSid !== stateRef.current.sessionId) {
+                    // Session changed remotely
+                    setSessionId(nextSid);
+                    setPlayers([]);
+                    setGameState("lobby");
+                    return;
+                }
+                
+                if (next.status) setGameState(next.status);
+                if (typeof next.heat_level === "number") setHeatLevel(next.heat_level);
+                if (next.current_player_id) {
+                    const p = stateRef.current.players.find(p => p.id === next.current_player_id);
+                    if (p && p.id !== stateRef.current.selectedPlayer?.id) {
+                        setSelectedPlayer(p);
+                    }
                 }
             }
-          }
         )
         .subscribe();
 
-      // --- Players Channel (Inserts/Updates/Deletes) ---
-      channel = supabase
+    // B. Room Channel (Players + Broadcasts)
+    const roomChannel = supabase
         .channel(`room_${hostId}`)
         .on(
-          "postgres_changes",
-          { event: "INSERT", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
-          (payload) => {
-            const np = payload.new as any;
-            const sidNow = stateRef.current.sessionId;
-            
-            // Strict check: Player must belong to CURRENT session
-            if (np.session_id === sidNow && np.is_active) {
-                 setPlayers((prev) => {
-                    // Avoid duplicates
-                    if (prev.some(p => p.id === np.id)) return prev;
-                    return [...prev, np];
-                 });
+            "postgres_changes",
+            { event: "INSERT", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
+            (payload) => {
+                const np = payload.new as any;
+                const sidNow = stateRef.current.sessionId;
+                
+                // IMPORTANT: Use the sessionId from Ref to ensure we match the current loaded session
+                if (np.session_id === sidNow && np.is_active) {
+                    setPlayers((prev) => {
+                        if (prev.some(p => p.id === np.id)) return prev;
+                        return [...prev, np];
+                    });
+                }
             }
-          }
         )
         .on(
-          "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
-          (payload) => {
-            const up = payload.new as any;
-            const sidNow = stateRef.current.sessionId;
-            
-            // If player moved to a DIFFERENT session or became inactive -> Remove them
-            if (up.session_id !== sidNow || !up.is_active) {
-              setPlayers((prev) => prev.filter((p) => p.id !== up.id));
-              return;
-            }
+            "postgres_changes",
+            { event: "UPDATE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
+            (payload) => {
+                const up = payload.new as any;
+                const sidNow = stateRef.current.sessionId;
+                
+                if (up.session_id !== sidNow || !up.is_active) {
+                    setPlayers((prev) => prev.filter((p) => p.id !== up.id));
+                    return;
+                }
 
-            // If player matches current session -> Update or Add them
-            setPlayers((prev) => {
-              const exists = prev.some((p) => p.id === up.id);
-              if (exists) {
-                return prev.map((p) => (p.id === up.id ? up : p));
-              } else {
-                return [...prev, up];
-              }
-            });
-          }
+                setPlayers((prev) => {
+                    const exists = prev.some((p) => p.id === up.id);
+                    return exists ? prev.map((p) => (p.id === up.id ? up : p)) : [...prev, up];
+                });
+            }
         )
-         .on(
-          "postgres_changes",
-          { event: "DELETE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
-          (payload) => {
-             const deletedId = (payload.old as any)?.id;
-             if (deletedId) setPlayers((prev) => prev.filter((p) => p.id !== deletedId));
-          }
+        .on(
+            "postgres_changes",
+            { event: "DELETE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
+            (payload) => {
+                const deletedId = (payload.old as any)?.id;
+                if (deletedId) setPlayers((prev) => prev.filter((p) => p.id !== deletedId));
+            }
         )
         .on("broadcast", { event: "game_event" }, (event) => handleGameEvent(event.payload))
-        .subscribe((status) => setIsConnected(status === "SUBSCRIBED"));
-    };
+        .subscribe((status) => {
+            console.log("Realtime connection status:", status);
+            setIsConnected(status === "SUBSCRIBED");
+        });
 
-    // Broadcast Handler
-    const handleGameEvent = (data: any) => {
+    return () => {
+        console.log("Cleaning up channels");
+        supabase.removeChannel(gsChannel);
+        supabase.removeChannel(roomChannel);
+    };
+  }, [authUser, sessionId]); // Re-subscribe if auth or session changes
+
+  // --- Handlers ---
+
+  const handleGameEvent = (data: any) => {
       const { type, payload, playerId } = data;
       
       if (type === "emoji") {
@@ -311,33 +300,41 @@ export const useHostGameLogic = (
           return { ...v, shots: newShots };
         });
       }
-    };
+  };
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        setAuthUser(session.user);
-        setupRealtime(session.user.id);
-      } else {
-        setAuthUser(null);
-        setPlayers([]);
-        setJoinUrl("");
-        setSessionId(null);
-        if (channel) supabase.removeChannel(channel);
-        if (gsChannel) supabase.removeChannel(gsChannel);
-      }
+  // --- Sync Game State (Debounced) ---
+  const syncGameStateToDB = async (
+    status: string,
+    currentPlayerId: string | null = null,
+    challenge: any = null,
+    forceControllerId: string | undefined | null = undefined
+  ) => {
+    if (!authUser) return;
+
+    let activeControllerId =
+      forceControllerId !== undefined ? forceControllerId : lastActivePlayer?.id;
+
+    if (!activeControllerId && stateRef.current.players.length > 0) {
+      activeControllerId = stateRef.current.players[0].id;
+    }
+
+    const sid = sessionId ?? stateRef.current.sessionId;
+
+    await supabase.from("game_states").upsert({
+      host_id: authUser.id,
+      session_id: sid,
+      status,
+      current_player_id: currentPlayerId,
+      last_active_player_id: activeControllerId,
+      heat_level: heatLevel,
+      challenge_text: challenge?.content || null,
+      challenge_type: challengeType,
+      updated_at: new Date().toISOString(),
     });
+  };
 
-    return () => {
-      authListener.subscription.unsubscribe();
-      if (channel) supabase.removeChannel(channel);
-      if (gsChannel) supabase.removeChannel(gsChannel);
-    };
-  }, []); // Init only
-
-  // --- Game Flow Sync ---
   useEffect(() => {
     if (authUser && sessionId) {
-      // Debounce slightly to avoid rapid DB spam
       const t = setTimeout(() => {
           syncGameStateToDB(gameState, selectedPlayer?.id, currentChallenge);
       }, 100);
@@ -366,16 +363,13 @@ export const useHostGameLogic = (
   // --- Actions ---
 
   const spinTheWheel = () => {
-    // ALWAYS use stateRef to get the most up-to-date players list during event execution
     const currentPlayers = stateRef.current.players;
     
     if (currentPlayers.length < 2) {
-        // Fallback: If UI shows players but Ref is empty, try force refresh
         handleManualRefresh();
         if (currentPlayers.length < 2) return alert("צריך לפחות 2 שחקנים כדי להתחיל!");
     }
 
-    // Only allow spin if we are in a valid state
     if (gameState !== 'lobby' && gameState !== 'waiting_for_spin') {
         return;
     }
@@ -384,7 +378,6 @@ export const useHostGameLogic = (
     playSpinSound();
 
     setTimeout(() => {
-      // Re-fetch players from ref inside timeout to be safe
       const freshPlayers = stateRef.current.players;
       if (freshPlayers.length === 0) return setGameState("lobby");
 
@@ -424,7 +417,7 @@ export const useHostGameLogic = (
         })
         .catch((err) => {
             console.error(err);
-            setGameState("challenge"); // Recover
+            setGameState("challenge");
         })
         .finally(() => setLoadingAI(false));
     }
@@ -472,23 +465,19 @@ export const useHostGameLogic = (
     if (data) {
       console.log("Manual Refresh Data:", data);
       setPlayers(data as Player[]);
-      // Ensure controller exists
       if (!lastActivePlayer && data.length > 0) setLastActivePlayer(data[0] as Player);
     }
   };
 
-  // --- STABILITY FIX: HARD RESET ---
   const endGame = async (askConfirm = true) => {
     if (!authUser) return;
     if (askConfirm && !confirm("לסיים משחק ולהתחיל חדש?")) return;
 
-    // 1. DELETE ALL PLAYERS for this host.
-    // This forces a "Fresh Start" in the DB and forces players to Re-Insert.
+    // Hard reset: Delete players
     await supabase.from("players").delete().eq("host_id", authUser.id);
 
     const newSid = genSessionId();
     
-    // 2. Reset Game State in DB
     await supabase.from("game_states").upsert({
       host_id: authUser.id,
       session_id: newSid,
@@ -501,7 +490,6 @@ export const useHostGameLogic = (
       updated_at: new Date().toISOString(),
     });
 
-    // 3. Reset Local State
     setSessionId(newSid);
     setPlayers([]);
     setGameState("lobby");
