@@ -59,16 +59,17 @@ export const useHostGameLogic = (
   });
   const [shotVoteMode, setShotVoteMode] = useState(false);
 
-  // Anti-Ghost & Anti-Spam Refs
-  const votedPlayersRef = useRef<Set<string>>(new Set());
-  const ignoreVotesRef = useRef<boolean>(false);
-
   // --- Helpers ---
   const genSessionId = () => {
     try {
       if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
     } catch {}
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  };
+
+  const isActiveRow = (p: any, sid: string | null) => {
+    if (!sid) return false;
+    return p?.session_id === sid && p?.is_active === true;
   };
 
   // State Ref - Critical for Realtime Callbacks
@@ -107,6 +108,7 @@ export const useHostGameLogic = (
     if (!authUser) return;
 
     const loadGame = async () => {
+        // Fetch existing game state
         const gs = await supabase
             .from("game_states")
             .select("*")
@@ -116,6 +118,7 @@ export const useHostGameLogic = (
         let currentSid = null;
 
         if (gs.data?.session_id) {
+            // Restore existing
             const data = gs.data;
             currentSid = data.session_id;
             setSessionId(currentSid);
@@ -124,6 +127,7 @@ export const useHostGameLogic = (
             if (data.challenge_type) setChallengeType(data.challenge_type as any);
             if (data.challenge_text) setCurrentChallenge({ content: data.challenge_text, spiciness: data.heat_level, themeColor: "", usedModel: "Restored" });
         } else {
+            // Create new
             currentSid = genSessionId();
             await supabase
                 .from("game_states")
@@ -137,6 +141,7 @@ export const useHostGameLogic = (
             setSessionId(currentSid);
         }
 
+        // Load players for this session
         if (currentSid) {
              const { data: loadedPlayers } = await supabase
                 .from("players")
@@ -148,6 +153,8 @@ export const useHostGameLogic = (
 
              if (loadedPlayers) {
                  setPlayers(loadedPlayers as Player[]);
+                 
+                 // Restore context if needed
                  if (gs.data) {
                     if (gs.data.current_player_id) {
                         const selected = (loadedPlayers as Player[]).find(p => p.id === gs.data.current_player_id);
@@ -168,7 +175,7 @@ export const useHostGameLogic = (
     loadGame();
   }, [authUser]);
 
-  // --- 3. Realtime Subscriptions ---
+  // --- 3. Realtime Subscriptions (Starts ONLY after SessionID is ready) ---
   useEffect(() => {
     if (!authUser || !sessionId) return;
 
@@ -185,6 +192,7 @@ export const useHostGameLogic = (
                 const nextSid: string | null = next?.session_id ?? null;
 
                 if (nextSid && nextSid !== stateRef.current.sessionId) {
+                    // Session changed remotely
                     setSessionId(nextSid);
                     setPlayers([]);
                     setGameState("lobby");
@@ -203,7 +211,7 @@ export const useHostGameLogic = (
         )
         .subscribe();
 
-    // B. Room Channel
+    // B. Room Channel (Players + Broadcasts)
     const roomChannel = supabase
         .channel(`room_${hostId}`)
         .on(
@@ -213,6 +221,7 @@ export const useHostGameLogic = (
                 const np = payload.new as any;
                 const sidNow = stateRef.current.sessionId;
                 
+                // IMPORTANT: Use the sessionId from Ref to ensure we match the current loaded session
                 if (np.session_id === sidNow && np.is_active) {
                     setPlayers((prev) => {
                         if (prev.some(p => p.id === np.id)) return prev;
@@ -258,7 +267,7 @@ export const useHostGameLogic = (
         supabase.removeChannel(gsChannel);
         supabase.removeChannel(roomChannel);
     };
-  }, [authUser, sessionId]);
+  }, [authUser, sessionId]); // Re-subscribe if auth or session changes
 
   // --- Handlers ---
 
@@ -275,41 +284,25 @@ export const useHostGameLogic = (
       if (type === "update_heat") setHeatLevel(payload);
       if (type === "trigger_spin") spinTheWheel();
       if (type === "action_skip") handleSkip();
-      if (type === "player_left") setPlayers((prev) => prev.filter((p) => p.id !== playerId));
-
-      // --- Vote Handling with Ghost Protection ---
-      // 1. Ignore if cooldown is active (prevents latency packets)
-      if (ignoreVotesRef.current) return;
-
-      // 2. Ignore if this player already voted (prevents spam)
-      const currentVotes = votedPlayersRef.current;
-
-      if (type === "vote_like") {
-          if (!currentVotes.has(playerId)) {
-              currentVotes.add(playerId);
-              setVotes((v) => ({ ...v, likes: v.likes + 1 }));
-          }
+      
+      if (type === "player_left") {
+          setPlayers((prev) => prev.filter((p) => p.id !== playerId));
       }
-      if (type === "vote_dislike") {
-          if (!currentVotes.has(playerId)) {
-              currentVotes.add(playerId);
-              setVotes((v) => ({ ...v, dislikes: v.dislikes + 1 }));
-          }
-      }
+
+      if (type === "vote_like") setVotes((v) => ({ ...v, likes: v.likes + 1 }));
+      if (type === "vote_dislike") setVotes((v) => ({ ...v, dislikes: v.dislikes + 1 }));
       
       if (type === "vote_shot") {
-        // Group shot can be spammed by multiple people, but we throttle the trigger
         setVotes((v) => {
           const newShots = v.shots + 1;
           const threshold = Math.max(2, Math.floor(stateRef.current.players.length / 2));
-          // Check ref to ensure we don't trigger multiple times in same frame
           if (newShots >= threshold && !stateRef.current.shotVoteMode) triggerGroupShot(); 
           return { ...v, shots: newShots };
         });
       }
   };
 
-  // --- Sync Game State ---
+  // --- Sync Game State (Debounced) ---
   const syncGameStateToDB = async (
     status: string,
     currentPlayerId: string | null = null,
@@ -347,16 +340,8 @@ export const useHostGameLogic = (
       }, 100);
       return () => clearTimeout(t);
     }
-    
-    // Logic to reset votes and activate ghost protection
     if (gameState !== "challenge") {
       setVotes({ likes: 0, dislikes: 0, shots: 0 });
-      votedPlayersRef.current.clear();
-    } else {
-      // Entering challenge mode: Reset tracker + Enable 1s latency shield
-      votedPlayersRef.current.clear();
-      ignoreVotesRef.current = true;
-      setTimeout(() => { ignoreVotesRef.current = false; }, 1000);
     }
   }, [gameState, selectedPlayer, currentChallenge, heatLevel, sessionId]);
 
@@ -371,25 +356,21 @@ export const useHostGameLogic = (
   useEffect(() => {
     if (gameState !== "challenge") return;
     const voters = Math.max(1, players.length - 1);
-    // Add safety check: voters must be > 0
-    if (voters > 0) {
-        if (votes.likes > voters * 0.5) handleDone();
-        else if (votes.dislikes > voters * 0.5) handleSkip();
-    }
+    if (votes.likes > voters * 0.5) handleDone();
+    else if (votes.dislikes > voters * 0.5) handleSkip();
   }, [votes, players.length, gameState]);
 
   // --- Actions ---
 
   const spinTheWheel = () => {
     const currentPlayers = stateRef.current.players;
-    const currentGameState = stateRef.current.gameState;
     
     if (currentPlayers.length < 2) {
         handleManualRefresh();
         if (currentPlayers.length < 2) return alert("צריך לפחות 2 שחקנים כדי להתחיל!");
     }
 
-    if (currentGameState !== 'lobby' && currentGameState !== 'waiting_for_spin') {
+    if (gameState !== 'lobby' && gameState !== 'waiting_for_spin') {
         return;
     }
 
@@ -492,6 +473,7 @@ export const useHostGameLogic = (
     if (!authUser) return;
     if (askConfirm && !confirm("לסיים משחק ולהתחיל חדש?")) return;
 
+    // Hard reset: Delete players
     await supabase.from("players").delete().eq("host_id", authUser.id);
 
     const newSid = genSessionId();

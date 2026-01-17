@@ -1,4 +1,4 @@
-// src/hooks/usePlayerGameLogic.ts
+// src/app/hooks/usePlayerGameLogic.ts
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/app/lib/supabase";
 import { RealtimeChannel, User } from "@supabase/supabase-js";
@@ -42,12 +42,14 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
   const [gameState, setGameState] = useState<GameStateRow | null>(null);
   const [localHeat, setLocalHeat] = useState(1);
+  const [hasVoted, setHasVoted] = useState(false); // הוספנו סטייט למעקב אחרי הצבעה
 
   // Refs
   const myPlayerIdRef = useRef<string | null>(null);
   const myUserIdRef = useRef<string | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const broadcastRef = useRef<RealtimeChannel | null>(null);
+  const lastChallengeRef = useRef<string | null>(null); // למעקב אחרי שינוי משימה
 
   useEffect(() => {
     myPlayerIdRef.current = myPlayerId;
@@ -60,7 +62,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     setIsSubmitted(false);
   };
 
-  // Fixed Compression for lighter payload
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -70,19 +71,13 @@ export const usePlayerGameLogic = (hostId: string | null) => {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement("canvas");
-          // Reduced size significantly to ensure Realtime payload success
-          const maxWidth = 150; 
+          const maxWidth = 300;
           const scaleSize = maxWidth / img.width;
           canvas.width = maxWidth;
           canvas.height = img.height * scaleSize;
           const ctx = canvas.getContext("2d");
-          if (ctx) {
-              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-              // Reduced quality to 0.5
-              resolve(canvas.toDataURL("image/jpeg", 0.5));
-          } else {
-              resolve(""); // Fallback
-          }
+          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", 0.7));
         };
       };
     });
@@ -129,17 +124,16 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       });
   }, [hostId]);
 
-  // 3. Realtime Listeners (Unified)
+  // 3. Realtime Listeners
   useEffect(() => {
     if (!hostId) return;
 
-    // We create one broadcast channel for interactions
     const bc = supabase.channel(`room_${hostId}`, {
       config: {
         broadcast: { self: false },
       },
     });
-
+    
     bc.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         broadcastRef.current = bc;
@@ -147,7 +141,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       }
     });
 
-    // Separate channels for DB changes to avoid filter conflicts
     const gameStateChannel = supabase
       .channel(`gamestate_listener_${hostId}`)
       .on(
@@ -231,6 +224,20 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     })();
   }, [hostId, authReady, gameState?.session_id]);
 
+  // 5. Reset Votes on New Turn/Challenge
+  useEffect(() => {
+    // אם הסטטוס השתנה (למשל חזר ללובי או ספין) או שהטקסט של המשימה השתנה - נאפס את ההצבעה
+    const isNewChallenge = gameState?.challenge_text !== lastChallengeRef.current;
+    const isNotChallenge = gameState?.status !== "challenge";
+
+    if (isNewChallenge || isNotChallenge) {
+        setHasVoted(false);
+        if (gameState?.challenge_text) {
+            lastChallengeRef.current = gameState.challenge_text;
+        }
+    }
+  }, [gameState?.challenge_text, gameState?.status]);
+
   // --- Actions ---
   const sendAction = async (type: string, payload: any = {}) => {
     if (!hostId || !myPlayerIdRef.current) {
@@ -241,7 +248,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     const channel = broadcastRef.current;
     if (!channel) {
         console.warn("Broadcast channel not ready yet. Retrying in 500ms...");
-        // Fallback retry
         setTimeout(() => sendAction(type, payload), 500);
         return;
     }
@@ -328,7 +334,13 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     sendAction("update_heat", val);
   };
   const sendEmoji = (icon: string) => sendAction("emoji", icon);
-  const sendVote = (type: "vote_like" | "vote_dislike" | "vote_shot" | "action_skip") => sendAction(type);
+  
+  // פונקציית ההצבעה המעודכנת
+  const sendVote = (type: "vote_like" | "vote_dislike" | "vote_shot" | "action_skip") => {
+    if (hasVoted) return; // מונע הצבעה כפולה
+    sendAction(type);
+    setHasVoted(true); // נועל הצבעות נוספות לסיבוב זה
+  };
 
   return {
     // State
@@ -342,6 +354,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     gameState,
     localHeat,
     myPlayerId,
+    hasVoted, // ייצוא הסטייט לשימוש ב-UI אם נרצה
     
     // Actions
     handleJoin,
