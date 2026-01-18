@@ -401,6 +401,7 @@ export const useHostGameLogic = (
     // --- NEW: Handle Choice ---
     // Listen for choice from the phone
     if (type === "player_choice") {
+        // Only accept if waiting for choice AND coming from the selected player
         if (gs === "waiting_for_choice" && playerId === stateRef.current.selectedPlayer?.id) {
             setChallengeType(payload as "אמת" | "חובה");
             setGameState("revealing");
