@@ -391,6 +391,11 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     }, 600);
   };
 
+  // New function to send the player's choice
+  const sendChoice = (choice: "אמת" | "חובה") => {
+    void sendAction("player_choice", choice);
+  };
+
   return {
     // State
     name,
@@ -414,5 +419,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     handleHeatChange,
     sendEmoji,
     sendVote,
+    sendChoice, // Exposed here
   };
 };

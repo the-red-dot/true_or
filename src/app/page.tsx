@@ -5,7 +5,7 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Flame, Trash2, LogOut, User as UserIcon, WifiOff, RefreshCw,
-  Cpu, Beer, ThumbsUp, ThumbsDown, LogIn, Play
+  Cpu, Beer, ThumbsUp, ThumbsDown, LogIn, Play, MessageCircleQuestion, Zap
 } from "lucide-react";
 import QRCode from "react-qr-code";
 import Link from "next/link";
@@ -223,6 +223,34 @@ export default function TruthOrDareGame() {
               {selectedPlayer.gender === "female" ? "תתכונני!" : "תתכונן!"}
             </h3>
           </motion.div>
+        )}
+
+        {/* NEW: Waiting for choice UI */}
+        {authUser && gameState === "waiting_for_choice" && selectedPlayer && (
+            <div className="flex flex-col items-center justify-center space-y-12">
+                <div className="flex gap-12 items-center">
+                    <div className="flex flex-col items-center gap-4 opacity-50">
+                        <MessageCircleQuestion size={80} className="text-blue-500" />
+                        <span className="text-2xl font-bold">אמת?</span>
+                    </div>
+                    
+                    <motion.div 
+                        animate={{ scale: [1, 1.2, 1] }} 
+                        transition={{ repeat: Infinity, duration: 1 }}
+                        className="w-48 h-48 rounded-full border-4 border-white overflow-hidden shadow-[0_0_50px_rgba(255,255,255,0.5)] z-10"
+                    >
+                        <img src={selectedPlayer.avatar} className="w-full h-full object-cover" />
+                    </motion.div>
+
+                    <div className="flex flex-col items-center gap-4 opacity-50">
+                        <Zap size={80} className="text-red-500" />
+                        <span className="text-2xl font-bold">חובה?</span>
+                    </div>
+                </div>
+                <h2 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-red-400 animate-pulse">
+                    ממתין לבחירה...
+                </h2>
+            </div>
         )}
 
         {authUser &&

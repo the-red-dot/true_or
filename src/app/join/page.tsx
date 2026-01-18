@@ -4,17 +4,16 @@
 import React, { Suspense } from "react";
 import { motion } from "framer-motion";
 import {
-  Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, RefreshCw, LogOut
+  Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, RefreshCw, LogOut,
+  MessageCircleQuestion, Zap // הוספתי ייבוא של האייקונים החדשים
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-// עדכנתי את הנתיב לפי המיקום החדש שציינת
 import { usePlayerGameLogic } from "@/app/hooks/usePlayerGameLogic";
 
 function GameController() {
   const searchParams = useSearchParams();
   const hostId = searchParams.get("hostId");
 
-  // שימוש ב-Hook החדש שלנו
   const {
     name, setName,
     gender, setGender,
@@ -31,7 +30,8 @@ function GameController() {
     handleSpin,
     handleHeatChange,
     sendEmoji,
-    sendVote
+    sendVote,
+    sendChoice // הוספתי את הפונקציה החדשה
   } = usePlayerGameLogic(hostId);
 
   // --- Render Functions ---
@@ -54,6 +54,9 @@ function GameController() {
     const isMyTurnToSpin =
       gameState.last_active_player_id === myPlayerId &&
       (gameState.status === "lobby" || gameState.status === "waiting_for_spin");
+    
+    // בדיקה חדשה: האם אנחנו במצב המתנה לבחירה
+    const isWaitingForChoice = gameState.status === "waiting_for_choice";
 
     return (
       <div className="fixed inset-0 bg-gray-900 text-white flex flex-col overflow-hidden" dir="rtl">
@@ -75,8 +78,9 @@ function GameController() {
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col justify-center items-center p-6 relative w-full max-w-md mx-auto overflow-y-auto">
-          {/* SPIN CONTROLS */}
-          {isMyTurnToSpin ? (
+          
+          {/* SPIN CONTROLS - מוצג רק אם זה התור שלי לסובב ואין בחירה ממתינה */}
+          {isMyTurnToSpin && !isWaitingForChoice && (
             <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full space-y-6">
               <div className="text-center">
                 <h2 className="text-3xl font-black mb-1 text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">
@@ -113,9 +117,39 @@ function GameController() {
                 {gameState.status === "lobby" ? "התחל משחק" : "סובב!"}
               </button>
             </motion.div>
-          ) : (
+          )}
+
+          {/* CHOICE CONTROLS (NEW SECTION) - מוצג כשהמשחק מחכה לבחירה וזה התור שלי */}
+          {isWaitingForChoice && isMyTurnToPlay && (
+             <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full space-y-4">
+               <div className="text-center mb-6">
+                 <h2 className="text-4xl font-black text-white">תורך לבחור!</h2>
+                 <p className="text-gray-400">מה זה יהיה הפעם?</p>
+               </div>
+               
+               <button 
+                 onClick={() => sendChoice("אמת")}
+                 className="w-full py-8 bg-blue-600 rounded-3xl flex flex-col items-center justify-center shadow-lg active:scale-95 transition-all border-b-8 border-blue-800"
+               >
+                 <MessageCircleQuestion size={48} className="mb-2 text-blue-200" />
+                 <span className="text-3xl font-black text-white">אמת</span>
+               </button>
+
+               <button 
+                 onClick={() => sendChoice("חובה")}
+                 className="w-full py-8 bg-red-600 rounded-3xl flex flex-col items-center justify-center shadow-lg active:scale-95 transition-all border-b-8 border-red-800"
+               >
+                 <Zap size={48} className="mb-2 text-yellow-300" />
+                 <span className="text-3xl font-black text-white">חובה</span>
+               </button>
+             </motion.div>
+          )}
+
+          {/* OTHER PLAYER ACTIONS / WAITING / SPECTATOR */}
+          {!isMyTurnToSpin && !isWaitingForChoice && (
             <div className="w-full space-y-6">
-              {/* Active Player Controls */}
+              
+              {/* Active Player Controls (Challenge Phase) */}
               {isMyTurnToPlay && gameState.status === "challenge" && (
                 <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full">
                   <div className="bg-gray-800/90 p-6 rounded-3xl border-2 border-pink-500 shadow-2xl mb-4 text-center">
@@ -133,7 +167,7 @@ function GameController() {
                 </motion.div>
               )}
 
-              {/* Spectator View */}
+              {/* Spectator View - Challenge Phase */}
               {!isMyTurnToPlay && gameState.status === "challenge" && (
                 <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-700">
                   <h3 className="text-center font-bold mb-4 text-gray-300">מה דעתך על הביצוע?</h3>
@@ -147,15 +181,27 @@ function GameController() {
                 </div>
               )}
 
-              {/* Waiting states */}
+              {/* Waiting/Status Texts */}
               {gameState.status !== "challenge" && (
                 <div className="text-center text-gray-400 animate-pulse">
                   {gameState.status === "spinning" && <div className="text-6xl animate-spin mb-4">🎲</div>}
+                  
+                  {/* Text for Waiting for choice */}
+                  {gameState.status === "waiting_for_choice" && (
+                     <div className="flex flex-col items-center">
+                         <div className="text-6xl mb-4 animate-bounce">🤔</div>
+                         <p className="text-2xl font-bold text-white mb-2">ממתינים לבחירה...</p>
+                         {!isMyTurnToPlay && <p className="text-sm">השחקן חושב כרגע</p>}
+                     </div>
+                  )}
+                  
                   <p className="text-xl font-bold">
                     {gameState.status === "lobby" ? "ממתינים למארח..." :
                      gameState.status === "waiting_for_spin" ? "ממתינים לסיבוב..." :
                      gameState.status === "spinning" ? "מגריל..." :
-                     gameState.status === "penalty" ? "שוט!" : "המשחק רץ בטלוויזיה..."}
+                     gameState.status === "penalty" ? "שוט!" : 
+                     gameState.status === "revealing" ? "מייצר משימה..." :
+                     gameState.status === "waiting_for_choice" ? "" : "המשחק רץ בטלוויזיה..."}
                   </p>
                 </div>
               )}

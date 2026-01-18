@@ -32,8 +32,9 @@ export const useHostGameLogic = (
   playWinSound: () => void
 ) => {
   // --- State ---
+  // Added 'waiting_for_choice' to the allowed states
   const [gameState, setGameState] = useState<
-    "lobby" | "waiting_for_spin" | "spinning" | "spotlight" | "revealing" | "challenge" | "penalty"
+    "lobby" | "waiting_for_spin" | "spinning" | "spotlight" | "waiting_for_choice" | "revealing" | "challenge" | "penalty"
   >("lobby");
   const [players, setPlayers] = useState<Player[]>([]);
   const [heatLevel, setHeatLevel] = useState<number>(1);
@@ -348,6 +349,8 @@ export const useHostGameLogic = (
     roundEndLockRef.current = false;
     resetVotes();
 
+    // UPDATED: Reset challenge type (let player choose later)
+    setChallengeType(null);
     setGameState("spinning");
     playSpinSound();
 
@@ -357,7 +360,7 @@ export const useHostGameLogic = (
 
       const randomPlayer = freshPlayers[Math.floor(Math.random() * freshPlayers.length)];
       setSelectedPlayer(randomPlayer);
-      setChallengeType(Math.random() > 0.5 ? "אמת" : "חובה");
+      // UPDATED: Do not set random challenge type here
       setGameState("spotlight");
     }, 3000);
   };
@@ -393,6 +396,16 @@ export const useHostGameLogic = (
         return next;
       });
       return;
+    }
+
+    // --- NEW: Handle Choice ---
+    // Listen for choice from the phone
+    if (type === "player_choice") {
+        if (gs === "waiting_for_choice" && playerId === stateRef.current.selectedPlayer?.id) {
+            setChallengeType(payload as "אמת" | "חובה");
+            setGameState("revealing");
+        }
+        return;
     }
 
     // IMPORTANT FIX:
@@ -587,9 +600,10 @@ export const useHostGameLogic = (
     else if (votes.dislikes > voters * 0.5) handleSkip();
   }, [votes, players.length, gameState]);
 
+  // UPDATED: Transition to waiting_for_choice instead of revealing
   useEffect(() => {
     if (gameState === "spotlight") {
-      const t = setTimeout(() => setGameState("revealing"), 3000);
+      const t = setTimeout(() => setGameState("waiting_for_choice"), 3000);
       return () => clearTimeout(t);
     }
   }, [gameState]);
