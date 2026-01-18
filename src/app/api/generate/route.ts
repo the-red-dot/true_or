@@ -14,14 +14,28 @@ export async function POST(req: Request) {
     // הוספנו את players לרשימת הפרמטרים הנשלפים מהבקשה
     const { playerName, playerGender, heatLevel, type, previousChallenges, players } = body;
 
+    // --- Safety Check: Max Heat Cap ---
+    // מוצאים את השחקן הספציפי כדי לבדוק את הגבולות שלו
+    let effectiveHeat = heatLevel;
+    // אנו מניחים ש-players מועבר בבקשה (מה-Client)
+    const activePlayer = players?.find((p: any) => p.name === playerName);
+    
+    if (activePlayer && typeof activePlayer.max_heat_level === 'number') {
+        // אם רמת החום שנבחרה במשחק גבוהה מהמקסימום של השחקן, משנמכים אותה
+        if (effectiveHeat > activePlayer.max_heat_level) {
+            console.log(`Capping heat for ${playerName}: ${effectiveHeat} -> ${activePlayer.max_heat_level}`);
+            effectiveHeat = activePlayer.max_heat_level;
+        }
+    }
+
     // נרמול מגדר (התאמה למבנה בדאטה בייס)
     let dbGender = 'neutral';
     if (playerGender === 'male') dbGender = 'male';
     if (playerGender === 'female') dbGender = 'female';
 
-    // טווח רמות: גמישות של +/- 1 כדי למצוא יותר תוצאות
-    let minHeat = heatLevel === 1 ? 1 : heatLevel - 1;
-    let maxHeat = heatLevel === 10 ? 10 : heatLevel + 1;
+    // טווח רמות: גמישות של +/- 1 סביב ה-effectiveHeat (הרמה המותאמת אישית)
+    let minHeat = effectiveHeat === 1 ? 1 : effectiveHeat - 1;
+    let maxHeat = effectiveHeat === 10 ? 10 : effectiveHeat + 1;
 
     // שליפת משימות רלוונטיות מה-DB
     const { data: tasks, error } = await supabase
@@ -36,7 +50,7 @@ export async function POST(req: Request) {
       console.error("Supabase Error:", error);
       return NextResponse.json({
           content: `משימת גיבוי (${type}): ספר פדיחה שקרתה לך לאחרונה!`,
-          spiciness: heatLevel,
+          spiciness: effectiveHeat,
           themeColor: "#FF00FF",
           usedModel: "Backup (DB Error)"
       });
@@ -44,8 +58,8 @@ export async function POST(req: Request) {
 
     if (!tasks || tasks.length === 0) {
         return NextResponse.json({
-            content: `לא מצאתי משימה לרמה ${heatLevel}... אז כולם עושים שוט לחיים! 🥂`,
-            spiciness: heatLevel,
+            content: `לא מצאתי משימה לרמה ${effectiveHeat}... אז כולם עושים שוט לחיים! 🥂`,
+            spiciness: effectiveHeat,
             themeColor: "#FF0000",
             usedModel: "Database (Empty)"
         });

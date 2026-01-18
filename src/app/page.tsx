@@ -1,10 +1,12 @@
+// src/app/page.tsx
 "use client";
 
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Flame, Trash2, LogOut, User as UserIcon, WifiOff, RefreshCw,
-  Cpu, Beer, ThumbsUp, ThumbsDown, LogIn, Play, MessageCircleQuestion, Zap
+  Cpu, Beer, ThumbsUp, ThumbsDown, LogIn, Play, MessageCircleQuestion, Zap,
+  Citrus // עבור הלימון, אם אין בגרסה שלך נשתמש באימוג'י
 } from "lucide-react";
 import QRCode from "react-qr-code";
 import Link from "next/link";
@@ -29,12 +31,52 @@ export default function TruthOrDareGame() {
     reactions,
     votes,
     shotVoteMode,
+    currentPenalty, // הוספנו את המשתנה הזה
     setHeatLevel,
     spinTheWheel,
     handleManualRefresh,
     handleLogout,
     endGame
   } = useHostGameLogic(playSpin, playShot, playWin);
+
+  // --- Helper Functions for Penalty UI ---
+
+  const renderPenaltyIcon = (type: string | undefined) => {
+      switch (type) {
+          case 'lemon': 
+            // משתמשים ב-Citrus או אימוג'י אם האייקון לא קיים
+            return <div className="text-[150px]">🍋</div>;
+          case 'vinegar': 
+            return <div className="text-[150px]">🫗</div>; 
+          case 'onion': 
+            return <div className="text-[150px]">🧅</div>; 
+          case 'garlic': 
+            return <div className="text-[150px]">🧄</div>;
+          case 'shot': 
+          default: 
+            return <Beer size={180} className="text-yellow-400 drop-shadow-[0_0_30px_rgba(250,204,21,0.8)]" />;
+      }
+  };
+
+  const getPenaltyColor = (type: string | undefined) => {
+      switch(type) {
+          case 'lemon': return 'bg-yellow-900/95';
+          case 'vinegar': return 'bg-amber-900/95';
+          case 'onion': return 'bg-purple-900/95';
+          case 'garlic': return 'bg-gray-800/95';
+          default: return 'bg-red-900/90'; // צבע ברירת מחדל לשוט
+      }
+  };
+
+  const getPenaltyTitle = (type: string | undefined) => {
+      switch(type) {
+          case 'lemon': return 'חמוץ!';
+          case 'vinegar': return 'מזעזע!';
+          case 'onion': return 'חריף!';
+          case 'garlic': return 'מסריח!';
+          default: return 'SHOT!';
+      }
+  };
 
   // --- Renders ---
 
@@ -224,7 +266,7 @@ export default function TruthOrDareGame() {
           </motion.div>
         )}
 
-        {/* NEW: Waiting for choice UI */}
+        {/* Waiting for choice UI */}
         {authUser && gameState === "waiting_for_choice" && selectedPlayer && (
             <div className="flex flex-col items-center justify-center space-y-12">
                 <div className="flex gap-12 items-center">
@@ -252,6 +294,7 @@ export default function TruthOrDareGame() {
             </div>
         )}
 
+        {/* Challenge / Revealing UI */}
         {authUser &&
           (gameState === "challenge" || gameState === "revealing") &&
           currentChallenge &&
@@ -323,36 +366,34 @@ export default function TruthOrDareGame() {
                   )}
                 </div>
               </motion.div>
-              
-              {/* Removed the bottom players list to keep the screen clean */}
             </div>
           )}
 
+        {/* Penalty / Punishment Overlay */}
         <AnimatePresence>
           {gameState === "penalty" && (
             <motion.div
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.2 }}
-              className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-red-900/90 backdrop-blur-md overflow-hidden"
+              className={`absolute inset-0 z-50 flex flex-col items-center justify-center backdrop-blur-md overflow-hidden ${getPenaltyColor(currentPenalty?.type)}`}
             >
               <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-20" />
+              
               <motion.div
                 animate={{ rotate: [0, -10, 10, -10, 10, 0] }}
                 transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 1 }}
                 className="mb-8"
               >
-                <Beer
-                  size={180}
-                  className="text-yellow-400 drop-shadow-[0_0_30px_rgba(250,204,21,0.8)]"
-                />
+                {renderPenaltyIcon(currentPenalty?.type)}
               </motion.div>
 
               <h1 className="text-9xl font-black uppercase mb-4 text-white drop-shadow-[0_5px_5px_rgba(0,0,0,1)] border-4 border-white p-4">
-                SHOT!
+                {getPenaltyTitle(currentPenalty?.type)}
               </h1>
-              <h2 className="text-5xl font-bold text-red-200 mt-4">
-                {selectedPlayer?.name} מוותר/ת!
+              
+              <h2 className="text-5xl font-bold text-white/90 mt-4 text-center px-4 leading-tight drop-shadow-md">
+                {currentPenalty?.text || `${selectedPlayer?.name} מוותר/ת!`}
               </h2>
 
               <div className="absolute bottom-20 w-full text-center">
@@ -362,6 +403,7 @@ export default function TruthOrDareGame() {
           )}
         </AnimatePresence>
 
+        {/* Group Shot Voting Result */}
         <AnimatePresence>
           {shotVoteMode && (
             <motion.div

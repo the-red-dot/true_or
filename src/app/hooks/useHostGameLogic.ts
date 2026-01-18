@@ -15,6 +15,9 @@ export type Player = {
   user_id: string;
   session_id?: string | null;
   is_active?: boolean | null;
+  // שדות חדשים לבטיחות
+  is_adult?: boolean;
+  max_heat_level?: number;
 };
 
 export type Challenge = {
@@ -26,13 +29,18 @@ export type Challenge = {
 
 export type Reaction = { id: string; emoji: string; playerId: string; x: number };
 
+// טיפוס חדש לעונש
+export type Penalty = {
+    type: 'shot' | 'lemon' | 'vinegar' | 'onion' | 'garlic';
+    text: string;
+};
+
 export const useHostGameLogic = (
   playSpinSound: () => void,
   playShotSound: () => void,
   playWinSound: () => void
 ) => {
   // --- State ---
-  // Added 'waiting_for_choice' to the allowed states
   const [gameState, setGameState] = useState<
     "lobby" | "waiting_for_spin" | "spinning" | "spotlight" | "waiting_for_choice" | "revealing" | "challenge" | "penalty"
   >("lobby");
@@ -44,6 +52,9 @@ export const useHostGameLogic = (
   const [currentChallenge, setCurrentChallenge] = useState<Challenge | null>(null);
   const [loadingAI, setLoadingAI] = useState(false);
   const [joinUrl, setJoinUrl] = useState("");
+
+  // ניהול העונש הנוכחי
+  const [currentPenalty, setCurrentPenalty] = useState<Penalty | null>(null);
 
   // Auth & Connection
   const [authUser, setAuthUser] = useState<User | null>(null);
@@ -75,7 +86,7 @@ export const useHostGameLogic = (
   // Prevent double-ending a round due to late/duplicated vote events
   const roundEndLockRef = useRef(false);
 
-  // State Ref - Critical for Realtime Callbacks (avoid stale closures)
+  // State Ref - Critical for Realtime Callbacks
   const stateRef = useRef({
     players,
     lastActivePlayer,
@@ -115,6 +126,24 @@ export const useHostGameLogic = (
     authUser,
   ]);
 
+  // --- Logic for Determination of Penalty ---
+  const determinePenalty = (player: Player): Penalty => {
+      // אם השחקן בוגר (או שדה לא קיים, מניחים בוגר למען פשטות או שנקבע ברירת מחדל)
+      // כאן ברירת המחדל היא שוט, אלא אם כן סומן בפירוש כלא בוגר
+      if (player.is_adult) {
+          return { type: 'shot', text: 'שוט!' };
+      }
+      
+      // רשימת עונשים לקטינים
+      const punishments: Penalty[] = [
+          { type: 'lemon', text: 'לאכול פרוסת לימון בשלמותה!' },
+          { type: 'vinegar', text: 'שוט חומץ תפוחים!' },
+          { type: 'onion', text: 'לאכול טבעת בצל טרייה!' },
+          { type: 'garlic', text: 'לאכול שן שום טרייה!' }
+      ];
+      return punishments[Math.floor(Math.random() * punishments.length)];
+  };
+
   // --- Sync Game State to DB ---
   const syncGameStateToDB = async (args: {
     status: string;
@@ -141,7 +170,7 @@ export const useHostGameLogic = (
     });
   };
 
-  // Ensure controller exists in DB ASAP (fix: phone doesn't see Start Game until round 1)
+  // Ensure controller exists in DB ASAP
   const ensureController = (list: Player[]) => {
     const gs = stateRef.current.gameState;
     const sid = stateRef.current.sessionId;
@@ -156,7 +185,6 @@ export const useHostGameLogic = (
 
     if (!stillExists) setLastActivePlayer(controller);
 
-    // write controller to DB so players can see Start Game immediately
     void syncGameStateToDB({
       status: gs,
       currentPlayerId: stateRef.current.selectedPlayer?.id ?? null,
@@ -260,7 +288,6 @@ export const useHostGameLogic = (
             setLastActivePlayer(list[0]);
           }
 
-          // IMPORTANT: make sure DB has a controller immediately
           ensureController(list);
         }
       }
@@ -270,7 +297,7 @@ export const useHostGameLogic = (
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser]);
 
-  // --- Actions (defined early because realtime handlers use them) ---
+  // --- Actions ---
   const handleManualRefresh = async () => {
     const au = stateRef.current.authUser;
     const sid = stateRef.current.sessionId;
@@ -324,15 +351,22 @@ export const useHostGameLogic = (
     if (roundEndLockRef.current) return;
     roundEndLockRef.current = true;
 
+    // קביעת עונש
+    const sp = stateRef.current.selectedPlayer;
+    if (sp) {
+        const penalty = determinePenalty(sp);
+        setCurrentPenalty(penalty);
+    }
+
     setGameState("penalty");
     playShotSound();
 
-    const sp = stateRef.current.selectedPlayer;
     setTimeout(() => {
       setLastActivePlayer(sp ?? null);
       setGameState("waiting_for_spin");
       setSelectedPlayer(null);
-    }, 5000);
+      setCurrentPenalty(null); // איפוס עונש
+    }, 6000); // נותנים קצת יותר זמן לקרוא את העונש (6 שניות)
   };
 
   const spinTheWheel = () => {
@@ -349,7 +383,6 @@ export const useHostGameLogic = (
     roundEndLockRef.current = false;
     resetVotes();
 
-    // UPDATED: Reset challenge type (let player choose later)
     setChallengeType(null);
     setGameState("spinning");
     playSpinSound();
@@ -360,7 +393,6 @@ export const useHostGameLogic = (
 
       const randomPlayer = freshPlayers[Math.floor(Math.random() * freshPlayers.length)];
       setSelectedPlayer(randomPlayer);
-      // UPDATED: Do not set random challenge type here
       setGameState("spotlight");
     }, 3000);
   };
@@ -391,17 +423,14 @@ export const useHostGameLogic = (
     if (type === "player_left") {
       setPlayers((prev) => {
         const next = prev.filter((p) => p.id !== playerId);
-        // if controller left during lobby/waiting, pick a new one and sync
         ensureController(next);
         return next;
       });
       return;
     }
 
-    // --- NEW: Handle Choice ---
-    // Listen for choice from the phone
+    // --- Choice Handler ---
     if (type === "player_choice") {
-        // Only accept if waiting for choice AND coming from the selected player
         if (gs === "waiting_for_choice" && playerId === stateRef.current.selectedPlayer?.id) {
             setChallengeType(payload as "אמת" | "חובה");
             setGameState("revealing");
@@ -409,9 +438,6 @@ export const useHostGameLogic = (
         return;
     }
 
-    // IMPORTANT FIX:
-    // Ignore voting/skip events unless we are currently in CHALLENGE.
-    // This prevents "phantom" confetti / group shot triggered by votes sent during waiting/spinning/revealing.
     if (gs !== "challenge") return;
 
     if (type === "action_skip") {
@@ -440,7 +466,7 @@ export const useHostGameLogic = (
     }
   };
 
-  // --- 3. Realtime Subscriptions (Starts ONLY after SessionID is ready) ---
+  // --- 3. Realtime Subscriptions ---
   useEffect(() => {
     if (!authUser || !sessionId) return;
 
@@ -540,7 +566,7 @@ export const useHostGameLogic = (
     };
   }, [authUser, sessionId]);
 
-  // --- DB Sync (Debounced) ---
+  // --- DB Sync ---
   useEffect(() => {
     if (!authUser || !sessionId) return;
 
@@ -572,26 +598,24 @@ export const useHostGameLogic = (
     currentChallenge?.content,
   ]);
 
-  // Reset votes when leaving challenge AND also when entering a new round stage
+  // Reset votes
   useEffect(() => {
     if (gameState !== "challenge") {
       resetVotes();
     } else {
-      // entering challenge: start clean + unlock end-of-round
       roundEndLockRef.current = false;
       resetVotes();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState, sessionId]);
 
-  // URL setup
+  // URL
   useEffect(() => {
     if (authUser && typeof window !== "undefined") {
       setJoinUrl(`${window.location.origin}/join?hostId=${authUser.id}`);
     }
   }, [authUser]);
 
-  // Auto votes (only meaningful in challenge; guarded by roundEndLockRef)
+  // Auto votes
   useEffect(() => {
     if (gameState !== "challenge") return;
     if (roundEndLockRef.current) return;
@@ -601,7 +625,7 @@ export const useHostGameLogic = (
     else if (votes.dislikes > voters * 0.5) handleSkip();
   }, [votes, players.length, gameState]);
 
-  // UPDATED: Transition to waiting_for_choice instead of revealing
+  // Transition to waiting_for_choice
   useEffect(() => {
     if (gameState === "spotlight") {
       const t = setTimeout(() => setGameState("waiting_for_choice"), 3000);
@@ -667,6 +691,7 @@ export const useHostGameLogic = (
     setChallengeType(null);
     setHeatLevel(1);
     resetVotes();
+    setCurrentPenalty(null);
     roundEndLockRef.current = false;
   };
 
@@ -688,6 +713,7 @@ export const useHostGameLogic = (
     reactions,
     votes,
     shotVoteMode,
+    currentPenalty, // Expose for UI
     setHeatLevel,
     spinTheWheel,
     handleManualRefresh,

@@ -24,6 +24,9 @@ export type PlayerRow = {
   avatar: string;
   is_active: boolean | null;
   session_id: string | null;
+  // New safety fields
+  is_adult: boolean;
+  max_heat_level: number;
 };
 
 export const usePlayerGameLogic = (hostId: string | null) => {
@@ -31,6 +34,11 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   const [name, setName] = useState("");
   const [gender, setGender] = useState<"male" | "female" | "other" | "">("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  
+  // Safety Settings
+  const [isAdult, setIsAdult] = useState(false);
+  const [personalMaxHeat, setPersonalMaxHeat] = useState(4); // Default safe range
+
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -60,6 +68,14 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   useEffect(() => {
     myPlayerIdRef.current = myPlayerId;
   }, [myPlayerId]);
+
+  // Adjust personal max heat when adult status changes
+  useEffect(() => {
+    // If user is not adult, force max heat to 4
+    if (!isAdult && personalMaxHeat > 4) {
+      setPersonalMaxHeat(4);
+    }
+  }, [isAdult, personalMaxHeat]);
 
   // --- Helpers ---
   const handleKicked = (opts?: { keepInputs?: boolean }) => {
@@ -245,7 +261,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     (async () => {
       const { data } = await supabase
         .from("players")
-        .select("id,name,gender,avatar,is_active,session_id")
+        .select("id,name,gender,avatar,is_active,session_id,is_adult,max_heat_level")
         .eq("host_id", hostId)
         .eq("user_id", myUid)
         .eq("session_id", sessionId)
@@ -258,6 +274,9 @@ export const usePlayerGameLogic = (hostId: string | null) => {
         setName(p.name);
         setGender(p.gender);
         setImagePreview(p.avatar);
+        // Restore safety settings
+        setIsAdult(p.is_adult);
+        setPersonalMaxHeat(p.max_heat_level);
       }
     })();
   }, [hostId, authReady, gameState?.session_id]);
@@ -323,6 +342,9 @@ export const usePlayerGameLogic = (hostId: string | null) => {
               name,
               gender,
               avatar: imagePreview ?? "bg-pink-500",
+              // Save safety settings to DB
+              is_adult: isAdult,
+              max_heat_level: personalMaxHeat
             },
           ],
           { onConflict: "host_id,user_id" }
@@ -366,12 +388,20 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   };
 
   const handleHeatChange = (val: number) => {
-    setLocalHeat(val);
+    // Check safety cap: User cannot set game heat higher than their own allowed limit
+    const allowedMax = personalMaxHeat; 
+    let finalVal = val;
+
+    if (finalVal > allowedMax) {
+        finalVal = allowedMax;
+    }
+    
+    setLocalHeat(finalVal);
 
     // Debounce to reduce spam + prevent weird queued events
     if (heatDebounceRef.current) window.clearTimeout(heatDebounceRef.current);
     heatDebounceRef.current = window.setTimeout(() => {
-      void sendAction("update_heat", val);
+      void sendAction("update_heat", finalVal);
     }, 120);
   };
 
@@ -404,6 +434,13 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     setGender,
     imagePreview,
     handleImageUpload,
+    
+    // Safety
+    isAdult,
+    setIsAdult,
+    personalMaxHeat,
+    setPersonalMaxHeat,
+
     isSubmitted,
     loading,
     authReady,

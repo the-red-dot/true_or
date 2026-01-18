@@ -5,7 +5,7 @@ import React, { Suspense } from "react";
 import { motion } from "framer-motion";
 import {
   Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, RefreshCw, LogOut,
-  MessageCircleQuestion, Zap // הוספתי ייבוא של האייקונים החדשים
+  MessageCircleQuestion, Zap, ShieldCheck // הוספתי ShieldCheck לאייקון הבטיחות
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { usePlayerGameLogic } from "@/app/hooks/usePlayerGameLogic";
@@ -18,6 +18,10 @@ function GameController() {
     name, setName,
     gender, setGender,
     imagePreview, handleImageUpload,
+    // משתנים חדשים לבטיחות
+    isAdult, setIsAdult,
+    personalMaxHeat, setPersonalMaxHeat,
+    
     isSubmitted,
     loading,
     authReady,
@@ -31,7 +35,7 @@ function GameController() {
     handleHeatChange,
     sendEmoji,
     sendVote,
-    sendChoice // הוספתי את הפונקציה החדשה
+    sendChoice
   } = usePlayerGameLogic(hostId);
 
   // --- Render Functions ---
@@ -55,7 +59,6 @@ function GameController() {
       gameState.last_active_player_id === myPlayerId &&
       (gameState.status === "lobby" || gameState.status === "waiting_for_spin");
     
-    // בדיקה חדשה: האם אנחנו במצב המתנה לבחירה
     const isWaitingForChoice = gameState.status === "waiting_for_choice";
 
     return (
@@ -68,7 +71,7 @@ function GameController() {
           </div>
           <div className="flex gap-2 items-center">
             <div className="text-[10px] px-2 py-1 bg-green-500/20 text-green-400 rounded-full border border-green-500/30 flex items-center">
-              {isAnonymous ? "מחובר כאנונימי" : "מחובר"}
+              {isAnonymous ? "מחובר" : "מחובר"}
             </div>
             <button onClick={handleLeaveGame} className="p-1 bg-red-500/20 text-red-400 rounded-lg" title="צא מהמשחק">
               <LogOut size={16} />
@@ -79,7 +82,7 @@ function GameController() {
         {/* Main Content */}
         <div className="flex-1 flex flex-col justify-center items-center p-6 relative w-full max-w-md mx-auto overflow-y-auto">
           
-          {/* SPIN CONTROLS - מוצג רק אם זה התור שלי לסובב ואין בחירה ממתינה */}
+          {/* SPIN CONTROLS */}
           {isMyTurnToSpin && !isWaitingForChoice && (
             <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full space-y-6">
               <div className="text-center">
@@ -107,6 +110,9 @@ function GameController() {
                   onChange={(e) => handleHeatChange(parseInt(e.target.value))}
                   className="w-full h-8 bg-gray-700 rounded-full appearance-none cursor-pointer accent-pink-500"
                 />
+                <div className="text-[10px] text-gray-500 mt-2 text-center">
+                    מוגבל למקסימום {personalMaxHeat} לפי הגדרות הבטיחות שלך
+                </div>
               </div>
 
               <button
@@ -119,7 +125,7 @@ function GameController() {
             </motion.div>
           )}
 
-          {/* CHOICE CONTROLS (NEW SECTION) - מוצג כשהמשחק מחכה לבחירה וזה התור שלי */}
+          {/* CHOICE CONTROLS */}
           {isWaitingForChoice && isMyTurnToPlay && (
              <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full space-y-4">
                <div className="text-center mb-6">
@@ -145,7 +151,7 @@ function GameController() {
              </motion.div>
           )}
 
-          {/* OTHER PLAYER ACTIONS / WAITING / SPECTATOR */}
+          {/* OTHER PLAYER ACTIONS */}
           {!isMyTurnToSpin && !isWaitingForChoice && (
             <div className="w-full space-y-6">
               
@@ -161,13 +167,13 @@ function GameController() {
                     onClick={() => sendVote("action_skip")}
                     className="w-full py-5 bg-red-500/20 hover:bg-red-500/30 text-red-200 border-2 border-red-500 rounded-2xl font-bold text-xl flex items-center justify-center gap-3 active:scale-95 transition-all"
                   >
-                    <XCircle /> אני מוותר (שוט!)
+                    <XCircle /> אני מוותר (עונש!)
                   </button>
                   <p className="text-center text-xs text-gray-500 mt-2">לחיצה תעביר את התור</p>
                 </motion.div>
               )}
 
-              {/* Spectator View - Challenge Phase */}
+              {/* Spectator View */}
               {!isMyTurnToPlay && gameState.status === "challenge" && (
                 <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-700">
                   <h3 className="text-center font-bold mb-4 text-gray-300">מה דעתך על הביצוע?</h3>
@@ -181,12 +187,11 @@ function GameController() {
                 </div>
               )}
 
-              {/* Waiting/Status Texts */}
+              {/* Status Texts */}
               {gameState.status !== "challenge" && (
                 <div className="text-center text-gray-400 animate-pulse">
                   {gameState.status === "spinning" && <div className="text-6xl animate-spin mb-4">🎲</div>}
                   
-                  {/* Text for Waiting for choice */}
                   {gameState.status === "waiting_for_choice" && (
                      <div className="flex flex-col items-center">
                          <div className="text-6xl mb-4 animate-bounce">🤔</div>
@@ -199,7 +204,7 @@ function GameController() {
                     {gameState.status === "lobby" ? "ממתינים למארח..." :
                      gameState.status === "waiting_for_spin" ? "ממתינים לסיבוב..." :
                      gameState.status === "spinning" ? "מגריל..." :
-                     gameState.status === "penalty" ? "שוט!" : 
+                     gameState.status === "penalty" ? "עונש!" : 
                      gameState.status === "revealing" ? "מייצר משימה..." :
                      gameState.status === "waiting_for_choice" ? "" : "המשחק רץ בטלוויזיה..."}
                   </p>
@@ -255,16 +260,55 @@ function GameController() {
           className="w-full bg-gray-900 border border-gray-700 rounded-xl p-4 text-center text-xl focus:border-pink-500 outline-none"
         />
 
-        <div className="flex gap-2 justify-center">
+        <div className="flex gap-2 justify-center w-full">
           {[{ id: "male", l: "גבר" }, { id: "female", l: "אישה" }, { id: "other", l: "אחר" }].map((o) => (
             <button
               key={o.id}
               onClick={() => setGender(o.id as any)}
-              className={`px-4 py-2 rounded-lg border ${gender === o.id ? "bg-pink-600 border-pink-500" : "border-gray-800"}`}
+              className={`flex-1 py-3 rounded-lg border ${gender === o.id ? "bg-pink-600 border-pink-500" : "border-gray-800 bg-gray-900"}`}
             >
               {o.l}
             </button>
           ))}
+        </div>
+
+        {/* Safety Settings Card - החדש! */}
+        <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700 w-full text-right">
+            <div className="flex items-center gap-2 mb-4 text-gray-300 border-b border-gray-700 pb-2">
+                <ShieldCheck size={18} className="text-green-400" />
+                <span className="font-bold text-sm">הגדרות בטיחות</span>
+            </div>
+
+            <div className="flex items-center justify-between mb-4">
+                <label className="text-sm">אני מעל גיל 18</label>
+                <input 
+                    type="checkbox" 
+                    checked={isAdult} 
+                    onChange={(e) => setIsAdult(e.target.checked)}
+                    className="w-5 h-5 accent-pink-500"
+                />
+            </div>
+
+            <div className="mb-2">
+                <div className="flex justify-between text-xs text-gray-400 mb-1">
+                    <span>חום מקסימלי עבורי: {personalMaxHeat}</span>
+                    <span>{personalMaxHeat <= 4 ? "בטוח" : "נועז"}</span>
+                </div>
+                <input 
+                    type="range" 
+                    min="1" 
+                    max={isAdult ? "10" : "4"} 
+                    value={personalMaxHeat}
+                    onChange={(e) => setPersonalMaxHeat(parseInt(e.target.value))}
+                    className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${isAdult ? 'accent-pink-500 bg-gray-700' : 'accent-green-500 bg-green-900/30'}`}
+                />
+                <p className="text-[10px] text-gray-500 mt-1 leading-tight">
+                    {isAdult 
+                     ? "כמשתמש בוגר, באפשרותך לבחור כל רמת קושי." 
+                     : "משתמשים מתחת לגיל 18 מוגבלים לרמה 4 ומטה."}
+                     {" "}לעולם לא תקבל משימה מעל הרמה הזו.
+                </p>
+            </div>
         </div>
 
         <button
