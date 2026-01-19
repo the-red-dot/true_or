@@ -33,8 +33,8 @@ export type Penalty = {
     id?: string;
     type: 'shot' | 'lemon' | 'vinegar' | 'onion' | 'garlic' | 'water' | 'ice' | 'kiss_wall' | 'squats' | 'tea_bag' | 'pasta' | 'lipstick' | 'oil' | 'chili';
     text: string;
-    description?: string; // הוספנו תיאור
-    is18?: boolean; // סימון לגיל 18+
+    description?: string; 
+    is18?: boolean;
 };
 
 export const useHostGameLogic = (

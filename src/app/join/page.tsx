@@ -1,11 +1,11 @@
 // src/app/join/page.tsx
 "use client";
 
-import React, { Suspense, useState } from "react";
+import React, { Suspense, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, RefreshCw, LogOut,
-  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft
+  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft, Wine
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { usePlayerGameLogic, PENALTIES_LIST } from "@/app/hooks/usePlayerGameLogic";
@@ -28,6 +28,8 @@ function GameController() {
     gameState,
     localHeat,
     myPlayerId,
+    victimIsAdult,
+    victimGender, // מגדר הקורבן (זה שוויתר)
     handleJoin,
     handleLeaveGame,
     handleSpin,
@@ -63,6 +65,38 @@ function GameController() {
       }
   };
 
+  // --- Gender Helper for UI Texts ---
+  // משתמש במגדר של השחקן הנוכחי (זה שמחזיק במכשיר)
+  const t = (male: string, female: string) => {
+      return gender === 'female' ? female : male;
+  }
+
+  // --- Filter Penalties ---
+  // מסנן עונשים לפי גיל הקורבן (לא גיל המחזיק בשרביט)
+  const validPenalties = useMemo(() => {
+      return PENALTIES_LIST.filter(p => {
+          if (p.is18 && !victimIsAdult) return false;
+          return true;
+      });
+  }, [victimIsAdult]);
+
+  // --- Get Current Penalty Data ---
+  // שולף את הטקסט והתיאור המתאימים למגדר של הקורבן
+  const currentPenaltyData = useMemo(() => {
+      if (validPenalties.length === 0) return null;
+      // וודא שהאינדקס תקין (במקרה שהרשימה הצטמצמה)
+      const safeIndex = penaltyIndex % validPenalties.length; 
+      const p = validPenalties[safeIndex];
+      // ברירת מחדל לזכר אם אין מגדר או משהו השתבש
+      const g = victimGender === 'female' ? 'female' : 'male';
+      return {
+          type: p.type,
+          is18: p.is18,
+          ...p.gendered[g]
+      };
+  }, [validPenalties, penaltyIndex, victimGender]);
+
+
   // --- Render Functions ---
 
   // 1. Error State
@@ -80,7 +114,6 @@ function GameController() {
   // 2. Controller View (Active Game)
   if (isSubmitted && myPlayerId && gameState) {
     const isMyTurnToPlay = gameState.current_player_id === myPlayerId;
-    // האם אני המחזיק בשרביט? (המסובב / הקובע עונשים)
     const isController = gameState.last_active_player_id === myPlayerId;
     
     const isMyTurnToSpin = isController &&
@@ -91,27 +124,38 @@ function GameController() {
 
     // --- Carousel Handlers ---
     const nextPenalty = () => {
-        let next = (penaltyIndex + 1) % PENALTIES_LIST.length;
-        // Skip alcohol if controller is not adult (optional logic, but enforced generally)
-        // or ensure we only show valid ones. For now, showing all or maybe filtering based on victim could be complex.
-        // Assuming controller can pick anything, but 'is18' flag exists for reference.
+        const next = (penaltyIndex + 1) % validPenalties.length;
         setPenaltyIndex(next);
-        sendPenaltyPreview(PENALTIES_LIST[next]);
+        // שולחים לטלוויזיה את האובייקט הגולמי, הטלוויזיה תציג אייקון וטקסט.
+        // אבל הטלוויזיה לא יודעת את המגדר של הקורבן אוטומטית אם לא נשלח לה את הטקסט המעובד.
+        // הפתרון: נשלח לטלוויזיה את הטקסט והתיאור המעובדים כבר.
+        const pRaw = validPenalties[next];
+        const g = victimGender === 'female' ? 'female' : 'male';
+        const pResolved = {
+            type: pRaw.type,
+            text: pRaw.gendered[g].text,
+            description: pRaw.gendered[g].description
+        };
+        sendPenaltyPreview(pResolved);
     }
 
     const prevPenalty = () => {
-        const prev = (penaltyIndex - 1 + PENALTIES_LIST.length) % PENALTIES_LIST.length;
+        const prev = (penaltyIndex - 1 + validPenalties.length) % validPenalties.length;
         setPenaltyIndex(prev);
-        sendPenaltyPreview(PENALTIES_LIST[prev]);
+        const pRaw = validPenalties[prev];
+        const g = victimGender === 'female' ? 'female' : 'male';
+        const pResolved = {
+            type: pRaw.type,
+            text: pRaw.gendered[g].text,
+            description: pRaw.gendered[g].description
+        };
+        sendPenaltyPreview(pResolved);
     }
 
     const confirmPenalty = () => {
-        const p = PENALTIES_LIST[penaltyIndex];
-        if (p.is18 && !isAdult) {
-            alert("עונש זה מיועד לגילאי 18+ בלבד (הגדרות הבטיחות שלך מונעות בחירה זו)");
-            return;
-        }
-        sendPenaltySelection(p);
+        if (!currentPenaltyData) return;
+        // שולחים את העונש הנבחר עם הטקסט המותאם מגדרית
+        sendPenaltySelection(currentPenaltyData);
     }
 
     return (
@@ -140,7 +184,7 @@ function GameController() {
             <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full space-y-6">
               <div className="text-center">
                 <h2 className="text-3xl font-black mb-1 text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">
-                  {gameState.status === "lobby" ? "אתה מתחיל!" : "השרביט אצלך!"}
+                  {gameState.status === "lobby" ? t("אתה מתחיל!", "את מתחילה!") : t("השרביט אצלך!", "השרביט אצלך!")}
                 </h2>
                 <p className="text-gray-400 text-sm">בחר רמת חום וסובב</p>
               </div>
@@ -155,7 +199,7 @@ function GameController() {
                   </span>
                 </div>
                 
-                {/* Custom Fire Buttons Selector for Mobile */}
+                {/* Custom Fire Buttons Selector */}
                 <div className="flex gap-2 justify-between mb-2">
                     {[1, 2, 3].map((level) => (
                         <button
@@ -185,29 +229,29 @@ function GameController() {
                 onClick={handleSpin}
                 className="w-full py-6 bg-gradient-to-r from-pink-600 to-purple-600 rounded-3xl font-black text-3xl shadow-[0_0_30px_rgba(236,72,153,0.4)] active:scale-95 transition-transform flex items-center justify-center gap-3"
               >
-                <RefreshCw size={32} className="animate-spin-slow" />{" "}
-                {gameState.status === "lobby" ? "התחל משחק" : "סובב!"}
+                <Wine size={32} className="text-white" />
+                {gameState.status === "lobby" ? "מתחילים!" : "בוחרים קורבן..."}
               </button>
             </motion.div>
           )}
 
           {/* PENALTY SELECTION CONTROLS (Only for Controller) */}
-          {isChoosingPenalty && (
+          {isChoosingPenalty && currentPenaltyData && (
               <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full text-center">
                   <div className="mb-4">
                       <Gavel className="mx-auto text-purple-500 mb-2" size={40} />
-                      <h2 className="text-2xl font-black text-white">הוא ויתר!</h2>
-                      <p className="text-gray-300 text-sm">בחר לו עונש מהרשימה</p>
+                      <h2 className="text-2xl font-black text-white">{t("הוא ויתר!", "היא ויתרה!")}</h2>
+                      <p className="text-gray-300 text-sm">{t("בחר לו", "בחרי לה")} עונש מהרשימה</p>
                   </div>
 
                   <div className="bg-gray-800 border-2 border-purple-500 rounded-3xl p-6 mb-6 shadow-2xl relative overflow-hidden">
                       <div className="flex justify-center mb-4">
-                          {renderPenaltyIcon(PENALTIES_LIST[penaltyIndex].type)}
+                          {renderPenaltyIcon(currentPenaltyData.type)}
                       </div>
-                      <h3 className="text-xl font-bold mb-2">{PENALTIES_LIST[penaltyIndex].text}</h3>
-                      <p className="text-xs text-gray-400 italic mb-4">"{PENALTIES_LIST[penaltyIndex].description}"</p>
+                      <h3 className="text-xl font-bold mb-2">{currentPenaltyData.text}</h3>
+                      <p className="text-xs text-gray-400 italic mb-4">"{currentPenaltyData.description}"</p>
                       
-                      {PENALTIES_LIST[penaltyIndex].is18 && (
+                      {currentPenaltyData.is18 && (
                           <div className="absolute top-2 right-2 bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded-full">
                               18+
                           </div>
@@ -217,7 +261,7 @@ function GameController() {
                           <button onClick={prevPenalty} className="p-3 bg-gray-700 rounded-full hover:bg-gray-600 active:scale-90 transition-transform">
                               <ArrowRight size={24} />
                           </button>
-                          <span className="text-xs text-gray-500">{penaltyIndex + 1} / {PENALTIES_LIST.length}</span>
+                          <span className="text-xs text-gray-500">{penaltyIndex + 1} / {validPenalties.length}</span>
                           <button onClick={nextPenalty} className="p-3 bg-gray-700 rounded-full hover:bg-gray-600 active:scale-90 transition-transform">
                               <ArrowLeft size={24} />
                           </button>
@@ -238,7 +282,7 @@ function GameController() {
           {isWaitingForChoice && isMyTurnToPlay && (
              <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full space-y-4">
                <div className="text-center mb-6">
-                 <h2 className="text-4xl font-black text-white">תורך לבחור!</h2>
+                 <h2 className="text-4xl font-black text-white">{t("תורך לבחור!", "תורך לבחור!")}</h2>
                  <p className="text-gray-400">מה זה יהיה הפעם?</p>
                </div>
                
@@ -301,7 +345,7 @@ function GameController() {
                         onClick={() => sendVote("action_skip")}
                         className="w-full py-4 bg-red-500/20 hover:bg-red-500/30 text-red-200 border-2 border-red-500 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 active:scale-95 transition-all"
                       >
-                        <XCircle size={20} /> אני מוותר (עונש!)
+                        <XCircle size={20} /> {t("אני מוותר (עונש!)", "אני מוותרת (עונש!)")}
                       </button>
                       <p className="text-center text-[10px] text-gray-500 mt-2">לחיצה תעביר את ההחלטה למחזיק בשרביט</p>
                   </div>
@@ -333,7 +377,7 @@ function GameController() {
                      <div className="flex flex-col items-center">
                          <div className="text-6xl mb-4 animate-bounce">🤔</div>
                          <p className="text-2xl font-bold text-white mb-2">ממתינים לבחירה...</p>
-                         {!isMyTurnToPlay && <p className="text-sm">השחקן חושב כרגע</p>}
+                         {!isMyTurnToPlay && <p className="text-sm">{t("השחקן חושב", "השחקנית חושבת")} כרגע</p>}
                      </div>
                   )}
                   
@@ -401,7 +445,7 @@ function GameController() {
         />
 
         <div className="flex gap-2 justify-center w-full">
-          {[{ id: "male", l: "גבר" }, { id: "female", l: "אישה" }, { id: "other", l: "אחר" }].map((o) => (
+          {[{ id: "male", l: "גבר" }, { id: "female", l: "אישה" }].map((o) => (
             <button
               key={o.id}
               onClick={() => setGender(o.id as any)}
@@ -420,7 +464,7 @@ function GameController() {
             </div>
 
             <div className="flex items-center justify-between mb-4">
-                <label className="text-sm">אני מעל גיל 18</label>
+                <label className="text-sm">אני {gender === 'female' ? "מעל" : "מעל"} גיל 18</label>
                 <input 
                     type="checkbox" 
                     checked={isAdult} 
@@ -434,20 +478,28 @@ function GameController() {
                     <span>חום מקסימלי עבורי: {personalMaxHeat === 1 ? "קליל" : personalMaxHeat === 2 ? "נועז" : "לוהט"}</span>
                     <span>{personalMaxHeat <= 2 ? "בטוח" : "נועז"}</span>
                 </div>
-                <input 
-                    type="range" 
-                    min="1" 
-                    max={isAdult ? "3" : "2"} 
-                    step="1"
-                    value={personalMaxHeat}
-                    onChange={(e) => setPersonalMaxHeat(parseInt(e.target.value))}
-                    className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${isAdult ? 'accent-pink-500 bg-gray-700' : 'accent-green-500 bg-green-900/30'}`}
-                />
-                <div className="flex justify-between text-[10px] text-gray-600 mt-1">
-                    <span>1</span>
-                    <span>2</span>
-                    {isAdult && <span>3</span>}
+                
+                {/* Custom Fire Buttons Selector for Registration */}
+                <div className="flex gap-2 justify-between mb-2 mt-2">
+                    {[1, 2, 3].map((level) => (
+                        <button
+                            key={level}
+                            onClick={() => setPersonalMaxHeat(level)}
+                            disabled={!isAdult && level > 2}
+                            className={`
+                                flex-1 py-2 rounded-lg flex flex-col items-center transition-all duration-200
+                                ${personalMaxHeat === level 
+                                    ? 'bg-gradient-to-t from-orange-600 to-yellow-500 text-black shadow-lg border border-yellow-300' 
+                                    : 'bg-gray-700 text-gray-400 border border-gray-600'}
+                                ${!isAdult && level > 2 ? 'opacity-30 cursor-not-allowed grayscale' : ''}
+                            `}
+                        >
+                            <span className="text-lg">{level === 1 ? '🔥' : level === 2 ? '🔥🔥' : '🔥🔥🔥'}</span>
+                            <span className="text-[10px] font-bold">{level === 1 ? 'קליל' : level === 2 ? 'נועז' : 'לוהט'}</span>
+                        </button>
+                    ))}
                 </div>
+
                 <p className="text-[10px] text-gray-500 mt-2 leading-tight">
                     {isAdult 
                      ? "כמשתמש בוגר, באפשרותך לבחור כל רמת קושי." 

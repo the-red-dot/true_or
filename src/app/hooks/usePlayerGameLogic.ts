@@ -20,7 +20,7 @@ export type PlayerRow = {
   host_id: string;
   user_id: string;
   name: string;
-  gender: "male" | "female" | "other";
+  gender: "male" | "female"; // הוסר "other"
   avatar: string;
   is_active: boolean | null;
   session_id: string | null;
@@ -28,25 +28,92 @@ export type PlayerRow = {
   max_heat_level: number;
 };
 
-// --- UPDATED PENALTIES LIST ---
+// --- UPDATED PENALTIES LIST WITH GENDER SUPPORT ---
 export const PENALTIES_LIST = [
-    { type: 'shot', text: 'שוט אלכוהול', description: "יאללה להרים! רק אם אתה חוקי, כן?", is18: true },
-    { type: 'lemon', text: 'שוט של מיץ לימון', description: "פרצוף חמוץ זה הכי יפה לך." },
-    { type: 'kiss_wall', text: '5 נשיקות לקיר', description: "תפגין אהבה לקיר, הוא מקשיב להכל." },
-    { type: 'squats', text: '20 סקוואטים', description: "תוריד את הטוסיק נמוך, שלא ייתפס לך הגב." },
-    { type: 'onion', text: 'תאכל טבעת בצל', description: "ביס בריא, הריח בחינם." },
-    { type: 'tea_bag', text: 'לעיסת שקית תה', description: "תהיה בריטי מנומס, רק בלי המים החמים." },
-    { type: 'pasta', text: 'לאכול פסטה יבשה', description: "קראנץ' איטלקי, בתיאבון." },
-    { type: 'water', text: 'מים על הפנים', description: "תרענן את עצמך, אתה נראה עייף." },
-    { type: 'lipstick', text: 'שפתון ל-10 דקות', description: "תתאפר, שיהיה לך בוק קוסמופוליטן." },
-    { type: 'oil', text: 'כפית שמן', description: "שימון הגרון, שלא תחרוק לנו." },
-    { type: 'chili', text: 'ביס צ\'ילי חריף', description: "שורף לי בפה, שורף לי בלב." }
+    { 
+        type: 'shot', 
+        is18: true,
+        gendered: {
+            male: { text: 'שוט אלכוהול', description: "יאללה להרים! רק אם אתה חוקי, כן?" },
+            female: { text: 'שוט אלכוהול', description: "יאללה להרים! רק אם את חוקית, כן?" }
+        }
+    },
+    { 
+        type: 'lemon', 
+        gendered: {
+            male: { text: 'שוט של מיץ לימון', description: "פרצוף חמוץ זה הכי יפה לך." },
+            female: { text: 'שוט של מיץ לימון', description: "פרצוף חמוץ זה הכי יפה לך." }
+        }
+    },
+    { 
+        type: 'kiss_wall', 
+        gendered: {
+            male: { text: '5 נשיקות לקיר', description: "תפגין אהבה לקיר, הוא מקשיב להכל." },
+            female: { text: '5 נשיקות לקיר', description: "תפגיני אהבה לקיר, הוא מקשיב להכל." }
+        }
+    },
+    { 
+        type: 'squats', 
+        gendered: {
+            male: { text: '20 סקוואטים', description: "תוריד את הטוסיק נמוך, שלא ייתפס לך הגב." },
+            female: { text: '20 סקוואטים', description: "תורידי את הטוסיק נמוך, שלא ייתפס לך הגב." }
+        }
+    },
+    { 
+        type: 'onion', 
+        gendered: {
+            male: { text: 'תאכל טבעת בצל', description: "ביס בריא, הריח בחינם." },
+            female: { text: 'תאכלי טבעת בצל', description: "ביס בריא, הריח בחינם." }
+        }
+    },
+    { 
+        type: 'tea_bag', 
+        gendered: {
+            male: { text: 'לעיסת שקית תה', description: "תהיה בריטי מנומס, רק בלי המים החמים." },
+            female: { text: 'לעיסת שקית תה', description: "תהיי בריטית מנומסת, רק בלי המים החמים." }
+        }
+    },
+    { 
+        type: 'pasta', 
+        gendered: {
+            male: { text: 'לאכול פסטה יבשה', description: "קראנץ' איטלקי, בתיאבון גבר." },
+            female: { text: 'לאכול פסטה יבשה', description: "קראנץ' איטלקי, בתיאבון." }
+        }
+    },
+    { 
+        type: 'water', 
+        gendered: {
+            male: { text: 'מים על הפנים', description: "תרענן את עצמך, אתה נראה עייף." },
+            female: { text: 'מים על הפנים', description: "תרענני את עצמך, את נראית עייפה." }
+        }
+    },
+    { 
+        type: 'lipstick', 
+        gendered: {
+            male: { text: 'שפתון ל-10 דקות', description: "תתאפר, שיהיה לך בוק קוסמופוליטן." },
+            female: { text: 'שפתון ל-10 דקות', description: "תתאפרי, שיהיה לך בוק קוסמופוליטן." }
+        }
+    },
+    { 
+        type: 'oil', 
+        gendered: {
+            male: { text: 'כפית שמן', description: "שימון הגרון, שלא תחרוק לנו." },
+            female: { text: 'כפית שמן', description: "שימון הגרון, שלא תחרקי לנו." }
+        }
+    },
+    { 
+        type: 'chili', 
+        gendered: {
+            male: { text: 'ביס צ\'ילי חריף', description: "שורף לי בפה, שורף לי בלב." },
+            female: { text: 'ביס צ\'ילי חריף', description: "שורף לי בפה, שורף לי בלב." }
+        }
+    }
 ];
 
 export const usePlayerGameLogic = (hostId: string | null) => {
   // Registration State
   const [name, setName] = useState("");
-  const [gender, setGender] = useState<"male" | "female" | "other" | "">("");
+  const [gender, setGender] = useState<"male" | "female" | "">("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   
   // Safety Settings
@@ -64,6 +131,10 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
   const [gameState, setGameState] = useState<GameStateRow | null>(null);
   const [localHeat, setLocalHeat] = useState(1);
+  
+  // Victim info (for controller to know if victim is 18+ and gender)
+  const [victimIsAdult, setVictimIsAdult] = useState<boolean>(false);
+  const [victimGender, setVictimGender] = useState<"male" | "female">("male");
 
   // Refs
   const myPlayerIdRef = useRef<string | null>(null);
@@ -165,21 +236,17 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       });
   }, [hostId]);
 
-  // 3. Realtime Listeners (Unified)
+  // 3. Realtime Listeners
   useEffect(() => {
     if (!hostId) return;
 
     const bc = supabase.channel(`room_${hostId}`, {
-      config: {
-        broadcast: { self: false },
-      },
+      config: { broadcast: { self: false } },
     });
 
     bc.subscribe((status) => {
       if (status === "SUBSCRIBED") {
         broadcastRef.current = bc;
-        console.log("Broadcast channel connected for player");
-
         const pending = pendingActionRef.current;
         if (pending) {
           pendingActionRef.current = null;
@@ -193,10 +260,24 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "game_states", filter: `host_id=eq.${hostId}` },
-        (payload) => {
+        async (payload) => {
           const next = payload.new as GameStateRow;
           setGameState(next);
           setLocalHeat(next.heat_level ?? 1);
+
+          // אם יש שחקן פעיל (קורבן) חדש, נבדוק את פרטיו (גיל ומגדר)
+          if (next.current_player_id) {
+             const { data } = await supabase
+                .from('players')
+                .select('is_adult, gender')
+                .eq('id', next.current_player_id)
+                .single();
+             
+             if (data) {
+                 setVictimIsAdult(data.is_adult);
+                 setVictimGender(data.gender === 'female' ? 'female' : 'male');
+             }
+          }
 
           const nextSession = next.session_id ?? null;
           if (nextSession && nextSession !== sessionIdRef.current) {
@@ -243,7 +324,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
         window.clearTimeout(heatDebounceRef.current);
         heatDebounceRef.current = null;
       }
-
       supabase.removeChannel(bc);
       broadcastRef.current = null;
       supabase.removeChannel(gameStateChannel);
@@ -282,18 +362,12 @@ export const usePlayerGameLogic = (hostId: string | null) => {
 
   // --- Actions ---
   const sendAction = async (type: string, payload: any = {}) => {
-    if (!hostId || !myPlayerIdRef.current) {
-      console.warn("Cannot send action: Missing hostId or playerId");
-      return;
-    }
-
+    if (!hostId || !myPlayerIdRef.current) return;
     const channel = broadcastRef.current;
-
     if (!channel) {
       pendingActionRef.current = { type, payload };
       return;
     }
-
     try {
       await channel.send({
         type: "broadcast",
@@ -331,8 +405,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       const { data, error } = await supabase
         .from("players")
         .upsert(
-          [
-            {
+          [{
               host_id: hostId,
               user_id: userId,
               session_id: sessionId,
@@ -342,15 +415,13 @@ export const usePlayerGameLogic = (hostId: string | null) => {
               avatar: imagePreview ?? "bg-pink-500",
               is_adult: isAdult,
               max_heat_level: personalMaxHeat
-            },
-          ],
+            }],
           { onConflict: "host_id,user_id" }
         )
         .select("id")
         .single();
 
       if (error) throw error;
-
       setMyPlayerId(data.id);
       setIsSubmitted(true);
     } catch (e: any) {
@@ -375,24 +446,16 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   const handleSpin = () => {
     if (spinLockRef.current) return;
     spinLockRef.current = true;
-
     void sendAction("trigger_spin");
-
-    window.setTimeout(() => {
-      spinLockRef.current = false;
-    }, 800);
+    window.setTimeout(() => { spinLockRef.current = false; }, 800);
   };
 
   const handleHeatChange = (val: number) => {
     const allowedMax = personalMaxHeat; 
     let finalVal = val;
-
-    if (finalVal > allowedMax) {
-        finalVal = allowedMax;
-    }
+    if (finalVal > allowedMax) finalVal = allowedMax;
     
     setLocalHeat(finalVal);
-
     if (heatDebounceRef.current) window.clearTimeout(heatDebounceRef.current);
     heatDebounceRef.current = window.setTimeout(() => {
       void sendAction("update_heat", finalVal);
@@ -406,12 +469,8 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   const sendVote = (type: "vote_like" | "vote_dislike" | "vote_shot" | "action_skip") => {
     if (voteLockRef.current) return;
     voteLockRef.current = true;
-
     void sendAction(type);
-
-    window.setTimeout(() => {
-      voteLockRef.current = false;
-    }, 600);
+    window.setTimeout(() => { voteLockRef.current = false; }, 600);
   };
 
   const sendChoice = (choice: "אמת" | "חובה") => {
@@ -433,6 +492,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     isAdult, setIsAdult,
     personalMaxHeat, setPersonalMaxHeat,
     isSubmitted, loading, authReady, authUser, gameState, localHeat, myPlayerId,
+    victimIsAdult, victimGender, // חשוב לשימוש בקומפוננטה
     handleJoin, handleLeaveGame, handleSpin, handleHeatChange, sendEmoji, sendVote, sendChoice,
     sendPenaltyPreview, sendPenaltySelection
   };

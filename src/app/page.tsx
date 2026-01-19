@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Flame, Trash2, LogOut, User as UserIcon, WifiOff, RefreshCw,
   Cpu, Beer, ThumbsUp, ThumbsDown, LogIn, Play, MessageCircleQuestion, Zap,
-  Gavel 
+  Gavel, Wine // Wine icon for bottle
 } from "lucide-react";
 import QRCode from "react-qr-code";
 import Link from "next/link";
@@ -230,7 +230,7 @@ export default function TruthOrDareGame() {
                         key={level}
                         onClick={() => setHeatLevel(level)}
                         className={`
-                            relative group overflow-hidden px-4 py-2 rounded-xl transition-all duration-300
+                            relative group overflow-hidden px-4 py-2 rounded-xl transition-all duration-300 w-24
                             ${heatLevel === level 
                                 ? 'bg-gradient-to-t from-orange-600 to-yellow-500 shadow-[0_0_20px_rgba(251,191,36,0.6)] scale-110' 
                                 : 'bg-gray-800/50 hover:bg-gray-700/50 text-gray-400'}
