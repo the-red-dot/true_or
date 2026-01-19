@@ -15,7 +15,6 @@ export type Player = {
   user_id: string;
   session_id?: string | null;
   is_active?: boolean | null;
-  // שדות חדשים לבטיחות
   is_adult?: boolean;
   max_heat_level?: number;
 };
@@ -29,11 +28,13 @@ export type Challenge = {
 
 export type Reaction = { id: string; emoji: string; playerId: string; x: number };
 
-// טיפוס עונש מעודכן
+// עדכון טיפוס העונש כדי לכלול את כל הסוגים החדשים
 export type Penalty = {
     id?: string;
-    type: 'shot' | 'lemon' | 'vinegar' | 'onion' | 'garlic' | 'water' | 'ice';
+    type: 'shot' | 'lemon' | 'vinegar' | 'onion' | 'garlic' | 'water' | 'ice' | 'kiss_wall' | 'squats' | 'tea_bag' | 'pasta' | 'lipstick' | 'oil' | 'chili';
     text: string;
+    description?: string; // הוספנו תיאור
+    is18?: boolean; // סימון לגיל 18+
 };
 
 export const useHostGameLogic = (
@@ -54,16 +55,13 @@ export const useHostGameLogic = (
   const [loadingAI, setLoadingAI] = useState(false);
   const [joinUrl, setJoinUrl] = useState("");
 
-  // ניהול העונש הנוכחי
   const [currentPenalty, setCurrentPenalty] = useState<Penalty | null>(null);
-  const [previewPenalty, setPreviewPenalty] = useState<Penalty | null>(null); // העונש שהקונטרולר מסתכל עליו כרגע
+  const [previewPenalty, setPreviewPenalty] = useState<Penalty | null>(null);
 
-  // Auth & Connection
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-  // Interactive
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [votes, setVotes] = useState<{ likes: number; dislikes: number; shots: number }>({
     likes: 0,
@@ -85,10 +83,8 @@ export const useHostGameLogic = (
     setShotVoteMode(false);
   };
 
-  // Prevent double-ending a round due to late/duplicated vote events
   const roundEndLockRef = useRef(false);
 
-  // State Ref - Critical for Realtime Callbacks
   const stateRef = useRef({
     players,
     lastActivePlayer,
@@ -128,7 +124,6 @@ export const useHostGameLogic = (
     authUser,
   ]);
 
-  // --- Sync Game State to DB ---
   const syncGameStateToDB = async (args: {
     status: string;
     currentPlayerId: string | null;
@@ -154,7 +149,6 @@ export const useHostGameLogic = (
     });
   };
 
-  // Ensure controller exists in DB ASAP
   const ensureController = (list: Player[]) => {
     const gs = stateRef.current.gameState;
     const sid = stateRef.current.sessionId;
@@ -180,7 +174,6 @@ export const useHostGameLogic = (
     });
   };
 
-  // --- 1. Auth Initialization ---
   useEffect(() => {
     const initAuth = async () => {
       const {
@@ -207,7 +200,6 @@ export const useHostGameLogic = (
     };
   }, []);
 
-  // --- 2. Load Game Session Data ---
   useEffect(() => {
     if (!authUser) return;
 
@@ -255,7 +247,6 @@ export const useHostGameLogic = (
           const list = loadedPlayers as Player[];
           setPlayers(list);
 
-          // Restore context if needed
           if (gs.data) {
             if (gs.data.current_player_id) {
               const selected = list.find((p) => p.id === gs.data.current_player_id);
@@ -281,7 +272,6 @@ export const useHostGameLogic = (
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser]);
 
-  // --- Actions ---
   const handleManualRefresh = async () => {
     const au = stateRef.current.authUser;
     const sid = stateRef.current.sessionId;
@@ -331,17 +321,12 @@ export const useHostGameLogic = (
     }, 3000);
   };
 
-  // לוגיקה מעודכנת: ויתור מעביר למצב בחירת עונש
   const handleSkip = () => {
     if (roundEndLockRef.current) return;
-    // לא נועלים את הסיבוב עדיין, כי צריך לבחור עונש
-    // roundEndLockRef.current = true; 
-
     setGameState("choosing_penalty");
-    setPreviewPenalty(null); // איפוס תצוגה מקדימה
+    setPreviewPenalty(null); 
   };
 
-  // פונקציה שמפעילה את העונש לאחר הבחירה
   const executePenalty = (penalty: Penalty) => {
       if (roundEndLockRef.current) return;
       roundEndLockRef.current = true;
@@ -361,7 +346,7 @@ export const useHostGameLogic = (
   };
 
   const spinTheWheel = () => {
-    const { players: currentPlayers, gameState: gs } = stateRef.current;
+    const { players: currentPlayers, gameState: gs, lastActivePlayer: controller } = stateRef.current;
 
     if (currentPlayers.length < 2) {
       void handleManualRefresh();
@@ -370,7 +355,6 @@ export const useHostGameLogic = (
 
     if (gs !== "lobby" && gs !== "waiting_for_spin") return;
 
-    // new round starts
     roundEndLockRef.current = false;
     resetVotes();
 
@@ -382,13 +366,22 @@ export const useHostGameLogic = (
       const freshPlayers = stateRef.current.players;
       if (freshPlayers.length === 0) return setGameState("lobby");
 
-      const randomPlayer = freshPlayers[Math.floor(Math.random() * freshPlayers.length)];
+      // --- LOGIC CHANGE: Filter out the current controller ---
+      // השחקן שמחזיק בשרביט לא יכול להיבחר
+      let candidates = freshPlayers;
+      if (controller) {
+          candidates = freshPlayers.filter(p => p.id !== controller.id);
+      }
+      
+      // Fallback: If only 1 player total (testing) or error, fallback to any player
+      if (candidates.length === 0) candidates = freshPlayers;
+
+      const randomPlayer = candidates[Math.floor(Math.random() * candidates.length)];
       setSelectedPlayer(randomPlayer);
       setGameState("spotlight");
     }, 3000);
   };
 
-  // --- Handlers ---
   const handleGameEvent = (data: any) => {
     const { type, payload, playerId } = data;
     const gs = stateRef.current.gameState;
@@ -420,7 +413,6 @@ export const useHostGameLogic = (
       return;
     }
 
-    // --- Choice Handler ---
     if (type === "player_choice") {
         if (gs === "waiting_for_choice" && playerId === stateRef.current.selectedPlayer?.id) {
             setChallengeType(payload as "אמת" | "חובה");
@@ -429,10 +421,9 @@ export const useHostGameLogic = (
         return;
     }
 
-    // --- Penalty Handlers ---
     if (gs === "choosing_penalty") {
         if (type === "penalty_preview") {
-            setPreviewPenalty(payload); // עדכון בזמן אמת בטלוויזיה
+            setPreviewPenalty(payload); 
             return;
         }
         if (type === "penalty_selected") {
@@ -469,7 +460,6 @@ export const useHostGameLogic = (
     }
   };
 
-  // --- 3. Realtime Subscriptions ---
   useEffect(() => {
     if (!authUser || !sessionId) return;
 
@@ -569,7 +559,6 @@ export const useHostGameLogic = (
     };
   }, [authUser, sessionId]);
 
-  // --- DB Sync ---
   useEffect(() => {
     if (!authUser || !sessionId) return;
 
@@ -601,7 +590,6 @@ export const useHostGameLogic = (
     currentChallenge?.content,
   ]);
 
-  // Reset votes
   useEffect(() => {
     if (gameState !== "challenge") {
       resetVotes();
@@ -611,14 +599,12 @@ export const useHostGameLogic = (
     }
   }, [gameState, sessionId]);
 
-  // URL
   useEffect(() => {
     if (authUser && typeof window !== "undefined") {
       setJoinUrl(`${window.location.origin}/join?hostId=${authUser.id}`);
     }
   }, [authUser]);
 
-  // Auto votes
   useEffect(() => {
     if (gameState !== "challenge") return;
     if (roundEndLockRef.current) return;
@@ -628,7 +614,6 @@ export const useHostGameLogic = (
     else if (votes.dislikes > voters * 0.5) handleSkip();
   }, [votes, players.length, gameState]);
 
-  // Transition to waiting_for_choice
   useEffect(() => {
     if (gameState === "spotlight") {
       const t = setTimeout(() => setGameState("waiting_for_choice"), 3000);
@@ -636,7 +621,6 @@ export const useHostGameLogic = (
     }
   }, [gameState]);
 
-  // AI Generation
   useEffect(() => {
     if (gameState === "revealing" && selectedPlayer && challengeType && authUser) {
       setLoadingAI(true);
@@ -654,7 +638,6 @@ export const useHostGameLogic = (
         .then((res) => res.json())
         .then((data) => {
           setCurrentChallenge(data);
-          // עדכון רמת החום של המשחק לרמת החום של המשימה שהתקבלה
           setHeatLevel(data.spiciness); 
           setGameState("challenge");
         })
@@ -720,7 +703,7 @@ export const useHostGameLogic = (
     votes,
     shotVoteMode,
     currentPenalty,
-    previewPenalty, // חשיפת ה-preview ל-UI
+    previewPenalty,
     setHeatLevel,
     spinTheWheel,
     handleManualRefresh,

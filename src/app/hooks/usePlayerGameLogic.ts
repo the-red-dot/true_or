@@ -24,20 +24,23 @@ export type PlayerRow = {
   avatar: string;
   is_active: boolean | null;
   session_id: string | null;
-  // New safety fields
   is_adult: boolean;
   max_heat_level: number;
 };
 
-// רשימת עונשים לשימוש בקונטרולר
+// --- UPDATED PENALTIES LIST ---
 export const PENALTIES_LIST = [
-    { type: 'shot', text: 'שוט של משקה חריף!' },
-    { type: 'water', text: 'שפוך על עצמך כוס מים' },
-    { type: 'lemon', text: 'אכול פרוסת לימון בשלמותה' },
-    { type: 'ice', text: 'קוביות קרח בחולצה' },
-    { type: 'vinegar', text: 'שוט של חומץ!' },
-    { type: 'onion', text: 'ביס בבצל חי' },
-    { type: 'garlic', text: 'אכול שן שום טרייה' }
+    { type: 'shot', text: 'שוט אלכוהול', description: "יאללה להרים! רק אם אתה חוקי, כן?", is18: true },
+    { type: 'lemon', text: 'שוט של מיץ לימון', description: "פרצוף חמוץ זה הכי יפה לך." },
+    { type: 'kiss_wall', text: '5 נשיקות לקיר', description: "תפגין אהבה לקיר, הוא מקשיב להכל." },
+    { type: 'squats', text: '20 סקוואטים', description: "תוריד את הטוסיק נמוך, שלא ייתפס לך הגב." },
+    { type: 'onion', text: 'תאכל טבעת בצל', description: "ביס בריא, הריח בחינם." },
+    { type: 'tea_bag', text: 'לעיסת שקית תה', description: "תהיה בריטי מנומס, רק בלי המים החמים." },
+    { type: 'pasta', text: 'לאכול פסטה יבשה', description: "קראנץ' איטלקי, בתיאבון." },
+    { type: 'water', text: 'מים על הפנים', description: "תרענן את עצמך, אתה נראה עייף." },
+    { type: 'lipstick', text: 'שפתון ל-10 דקות', description: "תתאפר, שיהיה לך בוק קוסמופוליטן." },
+    { type: 'oil', text: 'כפית שמן', description: "שימון הגרון, שלא תחרוק לנו." },
+    { type: 'chili', text: 'ביס צ\'ילי חריף', description: "שורף לי בפה, שורף לי בלב." }
 ];
 
 export const usePlayerGameLogic = (hostId: string | null) => {
@@ -48,7 +51,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   
   // Safety Settings
   const [isAdult, setIsAdult] = useState(false);
-  // ברירת מחדל: 2 (נועז) לקטינים, 3 (לוהט) לבוגרים
   const [personalMaxHeat, setPersonalMaxHeat] = useState(2); 
 
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -69,10 +71,8 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   const sessionIdRef = useRef<string | null>(null);
   const broadcastRef = useRef<RealtimeChannel | null>(null);
 
-  // Prevent "ghost taps"/multi-send when channel isn't ready yet
   const pendingActionRef = useRef<{ type: string; payload: any } | null>(null);
 
-  // Small UX guards (do not affect responsiveness)
   const heatDebounceRef = useRef<number | null>(null);
   const spinLockRef = useRef(false);
   const voteLockRef = useRef(false);
@@ -81,16 +81,9 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     myPlayerIdRef.current = myPlayerId;
   }, [myPlayerId]);
 
-  // Adjust personal max heat when adult status changes
   useEffect(() => {
-    // If user is not adult, force max heat to 2 (Bold)
     if (!isAdult && personalMaxHeat > 2) {
       setPersonalMaxHeat(2);
-    }
-    // If becomes adult, default to 3 if it was lower? Not necessarily, user choice.
-    // But setting default on init:
-    if (isAdult && personalMaxHeat === 2) {
-       // Optional: Auto bump to 3? Let's leave it to user choice.
     }
   }, [isAdult, personalMaxHeat]);
 
@@ -98,7 +91,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   const handleKicked = (opts?: { keepInputs?: boolean }) => {
     if (hostId) localStorage.removeItem(`player_id_${hostId}`);
 
-    // Clear pending/locks so nothing "fires later"
     pendingActionRef.current = null;
     spinLockRef.current = false;
     voteLockRef.current = false;
@@ -177,7 +169,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   useEffect(() => {
     if (!hostId) return;
 
-    // We create one broadcast channel for interactions
     const bc = supabase.channel(`room_${hostId}`, {
       config: {
         broadcast: { self: false },
@@ -189,17 +180,14 @@ export const usePlayerGameLogic = (hostId: string | null) => {
         broadcastRef.current = bc;
         console.log("Broadcast channel connected for player");
 
-        // Flush only the latest pending action (prevents stacked "auto clicks")
         const pending = pendingActionRef.current;
         if (pending) {
           pendingActionRef.current = null;
-          // fire once, now that the channel is ready
           void sendAction(pending.type, pending.payload);
         }
       }
     });
 
-    // Separate channels for DB changes to avoid filter conflicts
     const gameStateChannel = supabase
       .channel(`gamestate_listener_${hostId}`)
       .on(
@@ -216,8 +204,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
             if (myPlayerIdRef.current) handleKicked({ keepInputs: true });
           }
 
-          // Optional: unlock vote on new challenge text / leaving challenge state
-          // This is a lightweight guard against duplicate vote sends on mobile.
           if (next.status !== "challenge") {
             voteLockRef.current = false;
           }
@@ -253,19 +239,16 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       .subscribe();
 
     return () => {
-      // Cleanup timers
       if (heatDebounceRef.current) {
         window.clearTimeout(heatDebounceRef.current);
         heatDebounceRef.current = null;
       }
 
-      // Cleanup channels
       supabase.removeChannel(bc);
       broadcastRef.current = null;
       supabase.removeChannel(gameStateChannel);
       supabase.removeChannel(playersChannel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hostId]);
 
   // 4. Restore Session
@@ -291,7 +274,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
         setName(p.name);
         setGender(p.gender);
         setImagePreview(p.avatar);
-        // Restore safety settings
         setIsAdult(p.is_adult);
         setPersonalMaxHeat(p.max_heat_level);
       }
@@ -307,7 +289,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
 
     const channel = broadcastRef.current;
 
-    // If channel isn't ready, store only the latest action (no recursive retries!)
     if (!channel) {
       pendingActionRef.current = { type, payload };
       return;
@@ -359,7 +340,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
               name,
               gender,
               avatar: imagePreview ?? "bg-pink-500",
-              // Save safety settings to DB
               is_adult: isAdult,
               max_heat_level: personalMaxHeat
             },
@@ -398,14 +378,12 @@ export const usePlayerGameLogic = (hostId: string | null) => {
 
     void sendAction("trigger_spin");
 
-    // short lock to prevent double-tap / accidental multi-send
     window.setTimeout(() => {
       spinLockRef.current = false;
     }, 800);
   };
 
   const handleHeatChange = (val: number) => {
-    // Check safety cap: User cannot set game heat higher than their own allowed limit
     const allowedMax = personalMaxHeat; 
     let finalVal = val;
 
@@ -415,7 +393,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     
     setLocalHeat(finalVal);
 
-    // Debounce to reduce spam + prevent weird queued events
     if (heatDebounceRef.current) window.clearTimeout(heatDebounceRef.current);
     heatDebounceRef.current = window.setTimeout(() => {
       void sendAction("update_heat", finalVal);
@@ -427,7 +404,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   };
 
   const sendVote = (type: "vote_like" | "vote_dislike" | "vote_shot" | "action_skip") => {
-    // lightweight guard against rapid double taps
     if (voteLockRef.current) return;
     voteLockRef.current = true;
 
@@ -438,12 +414,10 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     }, 600);
   };
 
-  // New function to send the player's choice
   const sendChoice = (choice: "אמת" | "חובה") => {
     void sendAction("player_choice", choice);
   };
 
-  // Penalty Actions
   const sendPenaltyPreview = (penalty: any) => {
       void sendAction("penalty_preview", penalty);
   };
@@ -453,37 +427,13 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   };
 
   return {
-    // State
-    name,
-    setName,
-    gender,
-    setGender,
-    imagePreview,
-    handleImageUpload,
-    
-    // Safety
-    isAdult,
-    setIsAdult,
-    personalMaxHeat,
-    setPersonalMaxHeat,
-
-    isSubmitted,
-    loading,
-    authReady,
-    authUser,
-    gameState,
-    localHeat,
-    myPlayerId,
-
-    // Actions
-    handleJoin,
-    handleLeaveGame,
-    handleSpin,
-    handleHeatChange,
-    sendEmoji,
-    sendVote,
-    sendChoice,
-    sendPenaltyPreview,
-    sendPenaltySelection
+    name, setName,
+    gender, setGender,
+    imagePreview, handleImageUpload,
+    isAdult, setIsAdult,
+    personalMaxHeat, setPersonalMaxHeat,
+    isSubmitted, loading, authReady, authUser, gameState, localHeat, myPlayerId,
+    handleJoin, handleLeaveGame, handleSpin, handleHeatChange, sendEmoji, sendVote, sendChoice,
+    sendPenaltyPreview, sendPenaltySelection
   };
 };

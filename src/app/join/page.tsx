@@ -1,8 +1,8 @@
 // src/app/join/page.tsx
 "use client";
 
-import React, { Suspense, useState, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { Suspense, useState } from "react";
+import { motion } from "framer-motion";
 import {
   Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, RefreshCw, LogOut,
   MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft
@@ -42,6 +42,27 @@ function GameController() {
   // State for carousel
   const [penaltyIndex, setPenaltyIndex] = useState(0);
 
+  // --- Helpers for Icons (Copied for consistency on mobile) ---
+  const renderPenaltyIcon = (type: string | undefined) => {
+      switch (type) {
+          case 'lemon': return <div className="text-6xl">🍋</div>;
+          case 'vinegar': return <div className="text-6xl">🫗</div>; 
+          case 'onion': return <div className="text-6xl">🧅</div>; 
+          case 'garlic': return <div className="text-6xl">🧄</div>;
+          case 'water': return <div className="text-6xl">💦</div>;
+          case 'ice': return <div className="text-6xl">🧊</div>;
+          case 'shot': return <Beer size={60} className="text-yellow-400" />;
+          case 'kiss_wall': return <div className="text-6xl">💋</div>;
+          case 'squats': return <div className="text-6xl">🏋️</div>;
+          case 'tea_bag': return <div className="text-6xl">🍵</div>;
+          case 'pasta': return <div className="text-6xl">🍝</div>;
+          case 'lipstick': return <div className="text-6xl">💄</div>;
+          case 'oil': return <div className="text-6xl">🥄</div>;
+          case 'chili': return <div className="text-6xl">🌶️</div>;
+          default: return <div className="text-6xl">😈</div>;
+      }
+  };
+
   // --- Render Functions ---
 
   // 1. Error State
@@ -70,7 +91,10 @@ function GameController() {
 
     // --- Carousel Handlers ---
     const nextPenalty = () => {
-        const next = (penaltyIndex + 1) % PENALTIES_LIST.length;
+        let next = (penaltyIndex + 1) % PENALTIES_LIST.length;
+        // Skip alcohol if controller is not adult (optional logic, but enforced generally)
+        // or ensure we only show valid ones. For now, showing all or maybe filtering based on victim could be complex.
+        // Assuming controller can pick anything, but 'is18' flag exists for reference.
         setPenaltyIndex(next);
         sendPenaltyPreview(PENALTIES_LIST[next]);
     }
@@ -82,7 +106,12 @@ function GameController() {
     }
 
     const confirmPenalty = () => {
-        sendPenaltySelection(PENALTIES_LIST[penaltyIndex]);
+        const p = PENALTIES_LIST[penaltyIndex];
+        if (p.is18 && !isAdult) {
+            alert("עונש זה מיועד לגילאי 18+ בלבד (הגדרות הבטיחות שלך מונעות בחירה זו)");
+            return;
+        }
+        sendPenaltySelection(p);
     }
 
     return (
@@ -125,18 +154,28 @@ function GameController() {
                     {localHeat === 1 ? "קליל" : localHeat === 2 ? "נועז" : "לוהט"}
                   </span>
                 </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="3"
-                  step="1"
-                  value={localHeat}
-                  onChange={(e) => handleHeatChange(parseInt(e.target.value))}
-                  className="w-full h-8 bg-gray-700 rounded-full appearance-none cursor-pointer accent-pink-500"
-                />
-                <div className="flex justify-between px-1 mt-1 text-[10px] text-gray-500">
-                    <span>1</span><span>2</span><span>3</span>
+                
+                {/* Custom Fire Buttons Selector for Mobile */}
+                <div className="flex gap-2 justify-between mb-2">
+                    {[1, 2, 3].map((level) => (
+                        <button
+                            key={level}
+                            onClick={() => handleHeatChange(level)}
+                            disabled={level > personalMaxHeat}
+                            className={`
+                                flex-1 py-3 rounded-xl flex flex-col items-center transition-all duration-200
+                                ${localHeat === level 
+                                    ? 'bg-gradient-to-t from-orange-600 to-yellow-500 text-black shadow-lg scale-105 border-2 border-yellow-300' 
+                                    : 'bg-gray-700 text-gray-400 border border-gray-600'}
+                                ${level > personalMaxHeat ? 'opacity-30 cursor-not-allowed grayscale' : ''}
+                            `}
+                        >
+                            <span className="text-xl mb-1">{level === 1 ? '🔥' : level === 2 ? '🔥🔥' : '🔥🔥🔥'}</span>
+                            <span className="text-[10px] font-bold">{level === 1 ? 'קליל' : level === 2 ? 'נועז' : 'לוהט'}</span>
+                        </button>
+                    ))}
                 </div>
+
                 <div className="text-[10px] text-gray-500 mt-2 text-center">
                     מוגבל למקסימום {personalMaxHeat} לפי הגדרות הבטיחות שלך
                 </div>
@@ -155,20 +194,30 @@ function GameController() {
           {/* PENALTY SELECTION CONTROLS (Only for Controller) */}
           {isChoosingPenalty && (
               <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full text-center">
-                  <div className="mb-6">
-                      <Gavel className="mx-auto text-purple-500 mb-2" size={48} />
-                      <h2 className="text-3xl font-black text-white">הוא ויתר!</h2>
-                      <p className="text-gray-300">בחר לו עונש מהרשימה</p>
+                  <div className="mb-4">
+                      <Gavel className="mx-auto text-purple-500 mb-2" size={40} />
+                      <h2 className="text-2xl font-black text-white">הוא ויתר!</h2>
+                      <p className="text-gray-300 text-sm">בחר לו עונש מהרשימה</p>
                   </div>
 
-                  <div className="bg-gray-800 border-2 border-purple-500 rounded-3xl p-6 mb-6 shadow-2xl relative">
-                      <div className="text-6xl mb-4">😈</div>
-                      <h3 className="text-2xl font-bold mb-2">{PENALTIES_LIST[penaltyIndex].text}</h3>
-                      <div className="flex justify-between items-center mt-6">
+                  <div className="bg-gray-800 border-2 border-purple-500 rounded-3xl p-6 mb-6 shadow-2xl relative overflow-hidden">
+                      <div className="flex justify-center mb-4">
+                          {renderPenaltyIcon(PENALTIES_LIST[penaltyIndex].type)}
+                      </div>
+                      <h3 className="text-xl font-bold mb-2">{PENALTIES_LIST[penaltyIndex].text}</h3>
+                      <p className="text-xs text-gray-400 italic mb-4">"{PENALTIES_LIST[penaltyIndex].description}"</p>
+                      
+                      {PENALTIES_LIST[penaltyIndex].is18 && (
+                          <div className="absolute top-2 right-2 bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded-full">
+                              18+
+                          </div>
+                      )}
+
+                      <div className="flex justify-between items-center mt-4">
                           <button onClick={prevPenalty} className="p-3 bg-gray-700 rounded-full hover:bg-gray-600 active:scale-90 transition-transform">
                               <ArrowRight size={24} />
                           </button>
-                          <span className="text-sm text-gray-500">{penaltyIndex + 1} / {PENALTIES_LIST.length}</span>
+                          <span className="text-xs text-gray-500">{penaltyIndex + 1} / {PENALTIES_LIST.length}</span>
                           <button onClick={nextPenalty} className="p-3 bg-gray-700 rounded-full hover:bg-gray-600 active:scale-90 transition-transform">
                               <ArrowLeft size={24} />
                           </button>
@@ -181,7 +230,7 @@ function GameController() {
                   >
                       <Check size={24} /> בחר עונש זה
                   </button>
-                  <p className="text-xs text-gray-500 mt-4 animate-pulse">הבחירה שלך משודרת למסך בזמן אמת</p>
+                  <p className="text-[10px] text-gray-500 mt-2 animate-pulse">הבחירה משודרת למסך בזמן אמת</p>
               </motion.div>
           )}
 
@@ -278,6 +327,7 @@ function GameController() {
                 <div className="text-center text-gray-400 animate-pulse">
                   {gameState.status === "spinning" && <div className="text-6xl animate-spin mb-4">🎲</div>}
                   {gameState.status === "choosing_penalty" && <div className="text-6xl mb-4 animate-bounce">⚖️</div>}
+                  {gameState.status === "penalty" && <div className="text-6xl mb-4">⚠️</div>}
                   
                   {gameState.status === "waiting_for_choice" && (
                      <div className="flex flex-col items-center">
