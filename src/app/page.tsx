@@ -206,7 +206,7 @@ export default function TruthOrDareGame() {
                     </div>
                     {isController && (
                       <div className="text-center text-yellow-400 text-xs font-bold animate-pulse">
-                        מחזיק בשרביט
+                        {p.gender === 'female' ? 'מחזיקה בשרביט' : 'מחזיק בשרביט'}
                       </div>
                     )}
                   </div>
@@ -214,33 +214,35 @@ export default function TruthOrDareGame() {
               })}
             </div>
 
-            <div className="mt-12 bg-white/5 backdrop-blur-xl p-4 rounded-2xl border border-white/10 flex items-center gap-6">
+            <div className="mt-12 bg-white/5 backdrop-blur-xl p-6 rounded-3xl border border-white/10 flex flex-col md:flex-row items-center gap-8">
               {players.length >= 2 && (
                 <button
                   onClick={spinTheWheel}
-                  className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-500 rounded-xl font-bold flex items-center gap-2 hover:scale-105 transition-transform shadow-lg"
+                  className="px-10 py-6 bg-gradient-to-r from-green-600 to-green-500 rounded-2xl font-black text-2xl flex items-center gap-4 hover:scale-105 transition-transform shadow-[0_0_20px_rgba(34,197,94,0.6)]"
                 >
-                  <Play className="fill-white" /> התחל משחק
+                  <Wine className="rotate-45" size={32} /> 
+                  {lastActivePlayer?.gender === 'female' ? "סובבי את הבקבוק" : "סובב את הבקבוק"}
                 </button>
               )}
               
-              <div className="flex gap-2 border-r border-white/20 pr-6 mr-2 items-center">
+              {/* Heat Level Selector - Fixed Size Boxes */}
+              <div className="flex gap-4 items-center bg-black/30 p-2 rounded-2xl">
                   {[1, 2, 3].map((level) => (
                       <button
                         key={level}
                         onClick={() => setHeatLevel(level)}
                         className={`
-                            relative group overflow-hidden px-4 py-2 rounded-xl transition-all duration-300 w-24
-                            ${heatLevel === level 
-                                ? 'bg-gradient-to-t from-orange-600 to-yellow-500 shadow-[0_0_20px_rgba(251,191,36,0.6)] scale-110' 
-                                : 'bg-gray-800/50 hover:bg-gray-700/50 text-gray-400'}
+                          relative group overflow-hidden w-24 h-24 rounded-xl transition-all duration-300 flex flex-col items-center justify-center border-2
+                          ${heatLevel === level 
+                              ? 'bg-gradient-to-t from-orange-600 to-yellow-500 shadow-[0_0_20px_rgba(251,191,36,0.6)] scale-110 border-yellow-300 z-10' 
+                              : 'bg-gray-800/50 hover:bg-gray-700/50 text-gray-400 border-white/10'}
                         `}
                       >
                           <div className="flex flex-col items-center relative z-10">
-                              <span className={`text-2xl ${heatLevel === level ? 'animate-pulse' : 'grayscale opacity-50'}`}>
+                              <span className={`text-3xl mb-1 ${heatLevel === level ? 'animate-pulse' : 'grayscale opacity-50'}`}>
                                   {level === 1 ? '🔥' : level === 2 ? '🔥🔥' : '🔥🔥🔥'}
                               </span>
-                              <span className="text-[10px] font-bold mt-1 uppercase tracking-wide">
+                              <span className="text-sm font-black uppercase tracking-wide">
                                   {level === 1 ? 'קליל' : level === 2 ? 'נועז' : 'לוהט'}
                               </span>
                           </div>
@@ -250,24 +252,34 @@ export default function TruthOrDareGame() {
 
               <button
                 onClick={() => endGame(true)}
-                className="p-2 hover:bg-red-900/50 rounded-lg text-red-300 ml-4 flex items-center gap-2"
+                className="p-4 hover:bg-red-900/50 rounded-2xl text-red-400 transition-colors"
                 title="סיום משחק"
               >
-                <Trash2 size={20} />
-                <span className="hidden md:inline font-bold">סיום משחק</span>
+                <Trash2 size={24} />
               </button>
             </div>
           </div>
         )}
 
         {authUser && gameState === "spinning" && (
-          <div className="relative">
+          <div className="flex flex-col items-center justify-center relative">
             <motion.div
-              animate={{ rotate: 360 * 5 }}
+              animate={{ rotate: 360 * 10 }}
               transition={{ duration: 3, ease: "circOut" }}
-              className="w-96 h-96 rounded-full border-[12px] border-dashed border-cyan-500/30 flex items-center justify-center"
+              className="relative z-10"
             >
-              <span className="text-9xl">🎡</span>
+              {/* Spinning Bottle Icon instead of Wheel */}
+              <Wine size={300} className="text-pink-500 drop-shadow-[0_0_50px_rgba(236,72,153,0.8)]" />
+            </motion.div>
+            
+            <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-12 text-center"
+            >
+                <h2 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 animate-pulse">
+                    מגרילים קורבן... 😈
+                </h2>
             </motion.div>
           </div>
         )}
@@ -428,7 +440,9 @@ export default function TruthOrDareGame() {
                         {lastActivePlayer && (
                             <div className="flex items-center justify-center gap-3 mb-8">
                                 <img src={lastActivePlayer.avatar} className="w-12 h-12 rounded-full border-2 border-purple-500" />
-                                <span className="text-2xl text-purple-300 font-bold">{lastActivePlayer.name} מחליט/ה</span>
+                                <span className="text-2xl text-purple-300 font-bold">
+                                    {lastActivePlayer.name} {lastActivePlayer.gender === 'female' ? 'מחליטה' : 'מחליט'}
+                                </span>
                             </div>
                         )}
 
@@ -445,7 +459,9 @@ export default function TruthOrDareGame() {
                                     {previewPenalty.description && <p className="text-xl text-gray-400 italic">"{previewPenalty.description}"</p>}
                                 </motion.div>
                             ) : (
-                                <p className="text-xl text-gray-500 animate-pulse">מתלבט/ת...</p>
+                                <p className="text-xl text-gray-500 animate-pulse">
+                                    {lastActivePlayer?.gender === 'female' ? 'מתלבטת...' : 'מתלבט...'}
+                                </p>
                             )}
                         </div>
                     </div>

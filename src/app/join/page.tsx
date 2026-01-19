@@ -96,7 +96,7 @@ function GameController() {
       };
   }, [validPenalties, penaltyIndex, victimGender]);
 
-
+  
   // --- Render Functions ---
 
   // 1. Error State
@@ -229,8 +229,8 @@ function GameController() {
                 onClick={handleSpin}
                 className="w-full py-6 bg-gradient-to-r from-pink-600 to-purple-600 rounded-3xl font-black text-3xl shadow-[0_0_30px_rgba(236,72,153,0.4)] active:scale-95 transition-transform flex items-center justify-center gap-3"
               >
-                <Wine size={32} className="text-white" />
-                {gameState.status === "lobby" ? "מתחילים!" : "בוחרים קורבן..."}
+                <Wine size={32} className="text-white rotate-45" />
+                {gameState.status === "lobby" ? "מתחילים!" : t("סובב את הבקבוק", "סובבי את הבקבוק")}
               </button>
             </motion.div>
           )}
@@ -330,14 +330,14 @@ function GameController() {
                       {/* Heat Meter Compact for Mobile */}
                       <div className="flex justify-center gap-1 mb-6">
                           {Array.from({ length: 3 }).map((_, i) => (
-                               <div
-                                  key={i}
-                                  className={`w-8 h-2 rounded-full ${
-                                    i < (localHeat || 0)
-                                      ? "bg-gradient-to-r from-orange-600 to-yellow-400"
-                                      : "bg-gray-700/50"
-                                  }`}
-                                />
+                             <div
+                                key={i}
+                                className={`w-8 h-2 rounded-full ${
+                                  i < (localHeat || 0)
+                                    ? "bg-gradient-to-r from-orange-600 to-yellow-400"
+                                    : "bg-gray-700/50"
+                                }`}
+                             />
                           ))}
                       </div>
 
