@@ -1,4 +1,4 @@
-// src/hooks/usePlayerGameLogic.ts
+// src/app/hooks/usePlayerGameLogic.ts
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/app/lib/supabase";
 import { RealtimeChannel, User } from "@supabase/supabase-js";
@@ -29,6 +29,17 @@ export type PlayerRow = {
   max_heat_level: number;
 };
 
+// רשימת עונשים לשימוש בקונטרולר
+export const PENALTIES_LIST = [
+    { type: 'shot', text: 'שוט של משקה חריף!' },
+    { type: 'water', text: 'שפוך על עצמך כוס מים' },
+    { type: 'lemon', text: 'אכול פרוסת לימון בשלמותה' },
+    { type: 'ice', text: 'קוביות קרח בחולצה' },
+    { type: 'vinegar', text: 'שוט של חומץ!' },
+    { type: 'onion', text: 'ביס בבצל חי' },
+    { type: 'garlic', text: 'אכול שן שום טרייה' }
+];
+
 export const usePlayerGameLogic = (hostId: string | null) => {
   // Registration State
   const [name, setName] = useState("");
@@ -37,7 +48,8 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   
   // Safety Settings
   const [isAdult, setIsAdult] = useState(false);
-  const [personalMaxHeat, setPersonalMaxHeat] = useState(4); // Default safe range
+  // ברירת מחדל: 2 (נועז) לקטינים, 3 (לוהט) לבוגרים
+  const [personalMaxHeat, setPersonalMaxHeat] = useState(2); 
 
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -71,9 +83,14 @@ export const usePlayerGameLogic = (hostId: string | null) => {
 
   // Adjust personal max heat when adult status changes
   useEffect(() => {
-    // If user is not adult, force max heat to 4
-    if (!isAdult && personalMaxHeat > 4) {
-      setPersonalMaxHeat(4);
+    // If user is not adult, force max heat to 2 (Bold)
+    if (!isAdult && personalMaxHeat > 2) {
+      setPersonalMaxHeat(2);
+    }
+    // If becomes adult, default to 3 if it was lower? Not necessarily, user choice.
+    // But setting default on init:
+    if (isAdult && personalMaxHeat === 2) {
+       // Optional: Auto bump to 3? Let's leave it to user choice.
     }
   }, [isAdult, personalMaxHeat]);
 
@@ -426,6 +443,15 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     void sendAction("player_choice", choice);
   };
 
+  // Penalty Actions
+  const sendPenaltyPreview = (penalty: any) => {
+      void sendAction("penalty_preview", penalty);
+  };
+
+  const sendPenaltySelection = (penalty: any) => {
+      void sendAction("penalty_selected", penalty);
+  };
+
   return {
     // State
     name,
@@ -456,6 +482,8 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     handleHeatChange,
     sendEmoji,
     sendVote,
-    sendChoice, // Exposed here
+    sendChoice,
+    sendPenaltyPreview,
+    sendPenaltySelection
   };
 };

@@ -1,14 +1,14 @@
 // src/app/join/page.tsx
 "use client";
 
-import React, { Suspense } from "react";
-import { motion } from "framer-motion";
+import React, { Suspense, useState, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, RefreshCw, LogOut,
-  MessageCircleQuestion, Zap, ShieldCheck // הוספתי ShieldCheck לאייקון הבטיחות
+  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { usePlayerGameLogic } from "@/app/hooks/usePlayerGameLogic";
+import { usePlayerGameLogic, PENALTIES_LIST } from "@/app/hooks/usePlayerGameLogic";
 
 function GameController() {
   const searchParams = useSearchParams();
@@ -18,7 +18,6 @@ function GameController() {
     name, setName,
     gender, setGender,
     imagePreview, handleImageUpload,
-    // משתנים חדשים לבטיחות
     isAdult, setIsAdult,
     personalMaxHeat, setPersonalMaxHeat,
     
@@ -35,8 +34,13 @@ function GameController() {
     handleHeatChange,
     sendEmoji,
     sendVote,
-    sendChoice
+    sendChoice,
+    sendPenaltyPreview,
+    sendPenaltySelection
   } = usePlayerGameLogic(hostId);
+
+  // State for carousel
+  const [penaltyIndex, setPenaltyIndex] = useState(0);
 
   // --- Render Functions ---
 
@@ -55,11 +59,31 @@ function GameController() {
   // 2. Controller View (Active Game)
   if (isSubmitted && myPlayerId && gameState) {
     const isMyTurnToPlay = gameState.current_player_id === myPlayerId;
-    const isMyTurnToSpin =
-      gameState.last_active_player_id === myPlayerId &&
+    // האם אני המחזיק בשרביט? (המסובב / הקובע עונשים)
+    const isController = gameState.last_active_player_id === myPlayerId;
+    
+    const isMyTurnToSpin = isController &&
       (gameState.status === "lobby" || gameState.status === "waiting_for_spin");
     
     const isWaitingForChoice = gameState.status === "waiting_for_choice";
+    const isChoosingPenalty = gameState.status === "choosing_penalty" && isController;
+
+    // --- Carousel Handlers ---
+    const nextPenalty = () => {
+        const next = (penaltyIndex + 1) % PENALTIES_LIST.length;
+        setPenaltyIndex(next);
+        sendPenaltyPreview(PENALTIES_LIST[next]);
+    }
+
+    const prevPenalty = () => {
+        const prev = (penaltyIndex - 1 + PENALTIES_LIST.length) % PENALTIES_LIST.length;
+        setPenaltyIndex(prev);
+        sendPenaltyPreview(PENALTIES_LIST[prev]);
+    }
+
+    const confirmPenalty = () => {
+        sendPenaltySelection(PENALTIES_LIST[penaltyIndex]);
+    }
 
     return (
       <div className="fixed inset-0 bg-gray-900 text-white flex flex-col overflow-hidden" dir="rtl">
@@ -98,18 +122,21 @@ function GameController() {
                     <Flame className="fill-orange-400" /> {localHeat}
                   </span>
                   <span className="text-xs text-gray-400 uppercase tracking-widest">
-                    {localHeat < 4 ? "קליל" : localHeat < 8 ? "לוהט" : "אקסטרים"}
+                    {localHeat === 1 ? "קליל" : localHeat === 2 ? "נועז" : "לוהט"}
                   </span>
                 </div>
                 <input
                   type="range"
                   min="1"
-                  max="10"
+                  max="3"
                   step="1"
                   value={localHeat}
                   onChange={(e) => handleHeatChange(parseInt(e.target.value))}
                   className="w-full h-8 bg-gray-700 rounded-full appearance-none cursor-pointer accent-pink-500"
                 />
+                <div className="flex justify-between px-1 mt-1 text-[10px] text-gray-500">
+                    <span>1</span><span>2</span><span>3</span>
+                </div>
                 <div className="text-[10px] text-gray-500 mt-2 text-center">
                     מוגבל למקסימום {personalMaxHeat} לפי הגדרות הבטיחות שלך
                 </div>
@@ -123,6 +150,39 @@ function GameController() {
                 {gameState.status === "lobby" ? "התחל משחק" : "סובב!"}
               </button>
             </motion.div>
+          )}
+
+          {/* PENALTY SELECTION CONTROLS (Only for Controller) */}
+          {isChoosingPenalty && (
+              <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full text-center">
+                  <div className="mb-6">
+                      <Gavel className="mx-auto text-purple-500 mb-2" size={48} />
+                      <h2 className="text-3xl font-black text-white">הוא ויתר!</h2>
+                      <p className="text-gray-300">בחר לו עונש מהרשימה</p>
+                  </div>
+
+                  <div className="bg-gray-800 border-2 border-purple-500 rounded-3xl p-6 mb-6 shadow-2xl relative">
+                      <div className="text-6xl mb-4">😈</div>
+                      <h3 className="text-2xl font-bold mb-2">{PENALTIES_LIST[penaltyIndex].text}</h3>
+                      <div className="flex justify-between items-center mt-6">
+                          <button onClick={prevPenalty} className="p-3 bg-gray-700 rounded-full hover:bg-gray-600 active:scale-90 transition-transform">
+                              <ArrowRight size={24} />
+                          </button>
+                          <span className="text-sm text-gray-500">{penaltyIndex + 1} / {PENALTIES_LIST.length}</span>
+                          <button onClick={nextPenalty} className="p-3 bg-gray-700 rounded-full hover:bg-gray-600 active:scale-90 transition-transform">
+                              <ArrowLeft size={24} />
+                          </button>
+                      </div>
+                  </div>
+
+                  <button 
+                    onClick={confirmPenalty}
+                    className="w-full py-4 bg-purple-600 rounded-2xl font-bold text-xl shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                  >
+                      <Check size={24} /> בחר עונש זה
+                  </button>
+                  <p className="text-xs text-gray-500 mt-4 animate-pulse">הבחירה שלך משודרת למסך בזמן אמת</p>
+              </motion.div>
           )}
 
           {/* CHOICE CONTROLS */}
@@ -152,7 +212,7 @@ function GameController() {
           )}
 
           {/* OTHER PLAYER ACTIONS */}
-          {!isMyTurnToSpin && !isWaitingForChoice && (
+          {!isMyTurnToSpin && !isWaitingForChoice && !isChoosingPenalty && (
             <div className="w-full space-y-6">
               
               {/* Active Player Controls (Challenge Phase) */}
@@ -176,12 +236,12 @@ function GameController() {
 
                       {/* Heat Meter Compact for Mobile */}
                       <div className="flex justify-center gap-1 mb-6">
-                          {Array.from({ length: 10 }).map((_, i) => (
+                          {Array.from({ length: 3 }).map((_, i) => (
                                <div
                                   key={i}
-                                  className={`w-2 h-6 rounded-full ${
+                                  className={`w-8 h-2 rounded-full ${
                                     i < (localHeat || 0)
-                                      ? "bg-gradient-to-t from-orange-600 to-yellow-400"
+                                      ? "bg-gradient-to-r from-orange-600 to-yellow-400"
                                       : "bg-gray-700/50"
                                   }`}
                                 />
@@ -194,7 +254,7 @@ function GameController() {
                       >
                         <XCircle size={20} /> אני מוותר (עונש!)
                       </button>
-                      <p className="text-center text-[10px] text-gray-500 mt-2">לחיצה תעביר את התור</p>
+                      <p className="text-center text-[10px] text-gray-500 mt-2">לחיצה תעביר את ההחלטה למחזיק בשרביט</p>
                   </div>
                 </motion.div>
               )}
@@ -217,6 +277,7 @@ function GameController() {
               {gameState.status !== "challenge" && (
                 <div className="text-center text-gray-400 animate-pulse">
                   {gameState.status === "spinning" && <div className="text-6xl animate-spin mb-4">🎲</div>}
+                  {gameState.status === "choosing_penalty" && <div className="text-6xl mb-4 animate-bounce">⚖️</div>}
                   
                   {gameState.status === "waiting_for_choice" && (
                      <div className="flex flex-col items-center">
@@ -231,6 +292,7 @@ function GameController() {
                      gameState.status === "waiting_for_spin" ? "ממתינים לסיבוב..." :
                      gameState.status === "spinning" ? "מגריל..." :
                      gameState.status === "penalty" ? "עונש!" : 
+                     gameState.status === "choosing_penalty" ? "השרביט בוחר עונש..." :
                      gameState.status === "revealing" ? "מייצר משימה..." :
                      gameState.status === "waiting_for_choice" ? "" : "המשחק רץ בטלוויזיה..."}
                   </p>
@@ -240,23 +302,25 @@ function GameController() {
           )}
         </div>
 
-        {/* Emoji Bar */}
-        <div className="w-full pt-3 pb-6 bg-gray-900 border-t border-gray-800 z-10">
-          <p className="text-center text-[10px] text-gray-500 mb-2 font-bold uppercase tracking-widest">תגובה מהירה</p>
-          <div className="flex justify-between gap-2 overflow-x-auto pb-2 scrollbar-hide px-2">
-            {[{ icon: "😂" }, { icon: "😱" }, { icon: "😍" }, { icon: "🤢" }, { icon: "😈" }, { icon: "🫣" }, { icon: "🔥" }].map(
-              (item, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => sendEmoji(item.icon)}
-                  className="bg-gray-800 p-3 rounded-2xl text-2xl active:scale-75 transition-transform shadow-md border border-gray-700 flex-shrink-0 hover:bg-gray-700"
-                >
-                  {item.icon}
-                </button>
-              )
-            )}
-          </div>
-        </div>
+        {/* Emoji Bar (מוסתר אם בוחרים עונש) */}
+        {!isChoosingPenalty && (
+            <div className="w-full pt-3 pb-6 bg-gray-900 border-t border-gray-800 z-10">
+            <p className="text-center text-[10px] text-gray-500 mb-2 font-bold uppercase tracking-widest">תגובה מהירה</p>
+            <div className="flex justify-between gap-2 overflow-x-auto pb-2 scrollbar-hide px-2">
+                {[{ icon: "😂" }, { icon: "😱" }, { icon: "😍" }, { icon: "🤢" }, { icon: "😈" }, { icon: "🫣" }, { icon: "🔥" }].map(
+                (item, idx) => (
+                    <button
+                    key={idx}
+                    onClick={() => sendEmoji(item.icon)}
+                    className="bg-gray-800 p-3 rounded-2xl text-2xl active:scale-75 transition-transform shadow-md border border-gray-700 flex-shrink-0 hover:bg-gray-700"
+                    >
+                    {item.icon}
+                    </button>
+                )
+                )}
+            </div>
+            </div>
+        )}
       </div>
     );
   }
@@ -317,21 +381,27 @@ function GameController() {
 
             <div className="mb-2">
                 <div className="flex justify-between text-xs text-gray-400 mb-1">
-                    <span>חום מקסימלי עבורי: {personalMaxHeat}</span>
-                    <span>{personalMaxHeat <= 4 ? "בטוח" : "נועז"}</span>
+                    <span>חום מקסימלי עבורי: {personalMaxHeat === 1 ? "קליל" : personalMaxHeat === 2 ? "נועז" : "לוהט"}</span>
+                    <span>{personalMaxHeat <= 2 ? "בטוח" : "נועז"}</span>
                 </div>
                 <input 
                     type="range" 
                     min="1" 
-                    max={isAdult ? "10" : "4"} 
+                    max={isAdult ? "3" : "2"} 
+                    step="1"
                     value={personalMaxHeat}
                     onChange={(e) => setPersonalMaxHeat(parseInt(e.target.value))}
                     className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${isAdult ? 'accent-pink-500 bg-gray-700' : 'accent-green-500 bg-green-900/30'}`}
                 />
-                <p className="text-[10px] text-gray-500 mt-1 leading-tight">
+                <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+                    <span>1</span>
+                    <span>2</span>
+                    {isAdult && <span>3</span>}
+                </div>
+                <p className="text-[10px] text-gray-500 mt-2 leading-tight">
                     {isAdult 
                      ? "כמשתמש בוגר, באפשרותך לבחור כל רמת קושי." 
-                     : "משתמשים מתחת לגיל 18 מוגבלים לרמה 4 ומטה."}
+                     : "משתמשים מתחת לגיל 18 מוגבלים לרמה 2 ומטה."}
                     {" "}לעולם לא תקבל משימה מעל הרמה הזו.
                 </p>
             </div>

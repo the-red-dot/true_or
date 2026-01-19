@@ -29,9 +29,10 @@ export type Challenge = {
 
 export type Reaction = { id: string; emoji: string; playerId: string; x: number };
 
-// טיפוס חדש לעונש
+// טיפוס עונש מעודכן
 export type Penalty = {
-    type: 'shot' | 'lemon' | 'vinegar' | 'onion' | 'garlic';
+    id?: string;
+    type: 'shot' | 'lemon' | 'vinegar' | 'onion' | 'garlic' | 'water' | 'ice';
     text: string;
 };
 
@@ -42,7 +43,7 @@ export const useHostGameLogic = (
 ) => {
   // --- State ---
   const [gameState, setGameState] = useState<
-    "lobby" | "waiting_for_spin" | "spinning" | "spotlight" | "waiting_for_choice" | "revealing" | "challenge" | "penalty"
+    "lobby" | "waiting_for_spin" | "spinning" | "spotlight" | "waiting_for_choice" | "revealing" | "challenge" | "choosing_penalty" | "penalty"
   >("lobby");
   const [players, setPlayers] = useState<Player[]>([]);
   const [heatLevel, setHeatLevel] = useState<number>(1);
@@ -55,6 +56,7 @@ export const useHostGameLogic = (
 
   // ניהול העונש הנוכחי
   const [currentPenalty, setCurrentPenalty] = useState<Penalty | null>(null);
+  const [previewPenalty, setPreviewPenalty] = useState<Penalty | null>(null); // העונש שהקונטרולר מסתכל עליו כרגע
 
   // Auth & Connection
   const [authUser, setAuthUser] = useState<User | null>(null);
@@ -125,24 +127,6 @@ export const useHostGameLogic = (
     currentChallenge,
     authUser,
   ]);
-
-  // --- Logic for Determination of Penalty ---
-  const determinePenalty = (player: Player): Penalty => {
-      // אם השחקן בוגר (או שדה לא קיים, מניחים בוגר למען פשטות או שנקבע ברירת מחדל)
-      // כאן ברירת המחדל היא שוט, אלא אם כן סומן בפירוש כלא בוגר
-      if (player.is_adult) {
-          return { type: 'shot', text: 'שוט!' };
-      }
-      
-      // רשימת עונשים לקטינים
-      const punishments: Penalty[] = [
-          { type: 'lemon', text: 'לאכול פרוסת לימון בשלמותה!' },
-          { type: 'vinegar', text: 'שוט חומץ תפוחים!' },
-          { type: 'onion', text: 'לאכול טבעת בצל טרייה!' },
-          { type: 'garlic', text: 'לאכול שן שום טרייה!' }
-      ];
-      return punishments[Math.floor(Math.random() * punishments.length)];
-  };
 
   // --- Sync Game State to DB ---
   const syncGameStateToDB = async (args: {
@@ -347,26 +331,33 @@ export const useHostGameLogic = (
     }, 3000);
   };
 
+  // לוגיקה מעודכנת: ויתור מעביר למצב בחירת עונש
   const handleSkip = () => {
     if (roundEndLockRef.current) return;
-    roundEndLockRef.current = true;
+    // לא נועלים את הסיבוב עדיין, כי צריך לבחור עונש
+    // roundEndLockRef.current = true; 
 
-    // קביעת עונש
-    const sp = stateRef.current.selectedPlayer;
-    if (sp) {
-        const penalty = determinePenalty(sp);
-        setCurrentPenalty(penalty);
-    }
+    setGameState("choosing_penalty");
+    setPreviewPenalty(null); // איפוס תצוגה מקדימה
+  };
 
-    setGameState("penalty");
-    playShotSound();
+  // פונקציה שמפעילה את העונש לאחר הבחירה
+  const executePenalty = (penalty: Penalty) => {
+      if (roundEndLockRef.current) return;
+      roundEndLockRef.current = true;
 
-    setTimeout(() => {
-      setLastActivePlayer(sp ?? null);
-      setGameState("waiting_for_spin");
-      setSelectedPlayer(null);
-      setCurrentPenalty(null); // איפוס עונש
-    }, 6000); // נותנים קצת יותר זמן לקרוא את העונש (6 שניות)
+      setCurrentPenalty(penalty);
+      setGameState("penalty");
+      playShotSound();
+
+      setTimeout(() => {
+        const sp = stateRef.current.selectedPlayer;
+        setLastActivePlayer(sp ?? null);
+        setGameState("waiting_for_spin");
+        setSelectedPlayer(null);
+        setCurrentPenalty(null);
+        setPreviewPenalty(null);
+      }, 6000);
   };
 
   const spinTheWheel = () => {
@@ -436,6 +427,18 @@ export const useHostGameLogic = (
             setGameState("revealing");
         }
         return;
+    }
+
+    // --- Penalty Handlers ---
+    if (gs === "choosing_penalty") {
+        if (type === "penalty_preview") {
+            setPreviewPenalty(payload); // עדכון בזמן אמת בטלוויזיה
+            return;
+        }
+        if (type === "penalty_selected") {
+            executePenalty(payload);
+            return;
+        }
     }
 
     if (gs !== "challenge") return;
@@ -652,7 +655,6 @@ export const useHostGameLogic = (
         .then((data) => {
           setCurrentChallenge(data);
           // עדכון רמת החום של המשחק לרמת החום של המשימה שהתקבלה
-          // זה יגרום לסנכרון מול ה-DB ולעדכון כל הלקוחות
           setHeatLevel(data.spiciness); 
           setGameState("challenge");
         })
@@ -695,6 +697,7 @@ export const useHostGameLogic = (
     setHeatLevel(1);
     resetVotes();
     setCurrentPenalty(null);
+    setPreviewPenalty(null);
     roundEndLockRef.current = false;
   };
 
@@ -716,7 +719,8 @@ export const useHostGameLogic = (
     reactions,
     votes,
     shotVoteMode,
-    currentPenalty, // Expose for UI
+    currentPenalty,
+    previewPenalty, // חשיפת ה-preview ל-UI
     setHeatLevel,
     spinTheWheel,
     handleManualRefresh,

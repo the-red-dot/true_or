@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Flame, Trash2, LogOut, User as UserIcon, WifiOff, RefreshCw,
   Cpu, Beer, ThumbsUp, ThumbsDown, LogIn, Play, MessageCircleQuestion, Zap,
-  Citrus // עבור הלימון, אם אין בגרסה שלך נשתמש באימוג'י
+  Citrus, Gavel // אייקון חדש לעונש
 } from "lucide-react";
 import QRCode from "react-qr-code";
 import Link from "next/link";
@@ -31,7 +31,8 @@ export default function TruthOrDareGame() {
     reactions,
     votes,
     shotVoteMode,
-    currentPenalty, // הוספנו את המשתנה הזה
+    currentPenalty,
+    previewPenalty, // נוסף: תצוגה מקדימה של מה שהקונטרולר בוחר
     setHeatLevel,
     spinTheWheel,
     handleManualRefresh,
@@ -44,7 +45,6 @@ export default function TruthOrDareGame() {
   const renderPenaltyIcon = (type: string | undefined) => {
       switch (type) {
           case 'lemon': 
-            // משתמשים ב-Citrus או אימוג'י אם האייקון לא קיים
             return <div className="text-[150px]">🍋</div>;
           case 'vinegar': 
             return <div className="text-[150px]">🫗</div>; 
@@ -52,6 +52,10 @@ export default function TruthOrDareGame() {
             return <div className="text-[150px]">🧅</div>; 
           case 'garlic': 
             return <div className="text-[150px]">🧄</div>;
+          case 'water':
+            return <div className="text-[150px]">💧</div>;
+          case 'ice':
+            return <div className="text-[150px]">🧊</div>;
           case 'shot': 
           default: 
             return <Beer size={180} className="text-yellow-400 drop-shadow-[0_0_30px_rgba(250,204,21,0.8)]" />;
@@ -64,19 +68,19 @@ export default function TruthOrDareGame() {
           case 'vinegar': return 'bg-amber-900/95';
           case 'onion': return 'bg-purple-900/95';
           case 'garlic': return 'bg-gray-800/95';
-          default: return 'bg-red-900/90'; // צבע ברירת מחדל לשוט
+          case 'water': return 'bg-blue-900/95';
+          case 'ice': return 'bg-cyan-900/95';
+          default: return 'bg-red-900/90'; 
       }
   };
 
-  const getPenaltyTitle = (type: string | undefined) => {
-      switch(type) {
-          case 'lemon': return 'חמוץ!';
-          case 'vinegar': return 'מזעזע!';
-          case 'onion': return 'חריף!';
-          case 'garlic': return 'מסריח!';
-          default: return 'SHOT!';
-      }
-  };
+  // פונקציה לתרגום רמת חום למלל
+  const getHeatLabel = (level: number) => {
+      if (level === 1) return "קליל";
+      if (level === 2) return "נועז";
+      if (level === 3) return "לוהט 18+";
+      return "";
+  }
 
   // --- Renders ---
 
@@ -213,17 +217,27 @@ export default function TruthOrDareGame() {
                   <Play className="fill-white" /> התחל משחק
                 </button>
               )}
-              <span className="text-cyan-400 font-bold flex items-center gap-2 border-r border-white/20 pr-6 mr-2">
-                <Flame /> {heatLevel}
-              </span>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={heatLevel}
-                onChange={(e) => setHeatLevel(parseInt(e.target.value))}
-                className="w-32 accent-pink-500"
-              />
+              
+              <div className="flex items-center gap-4 border-r border-white/20 pr-6 mr-2">
+                  <Flame className="text-cyan-400" />
+                  <div className="flex flex-col">
+                      <input
+                        type="range"
+                        min="1"
+                        max="3"
+                        step="1"
+                        value={heatLevel}
+                        onChange={(e) => setHeatLevel(parseInt(e.target.value))}
+                        className="w-32 accent-pink-500 cursor-pointer"
+                      />
+                      <div className="flex justify-between text-[10px] text-gray-400 w-32 mt-1">
+                          <span>קליל</span>
+                          <span>נועז</span>
+                          <span>לוהט</span>
+                      </div>
+                  </div>
+              </div>
+
               <button
                 onClick={() => endGame(true)}
                 className="p-2 hover:bg-red-900/50 rounded-lg text-red-300 ml-4 flex items-center gap-2"
@@ -319,18 +333,18 @@ export default function TruthOrDareGame() {
                 <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-12 rounded-[3rem] text-center shadow-2xl relative overflow-hidden pt-40">
                   <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-pink-500 to-cyan-500" />
                   
-                  {/* Heat Meter Visualization */}
+                  {/* Heat Meter Visualization (3 Bars) */}
                   <div className="flex flex-col items-center gap-2 mb-8">
                      <span className="text-gray-400 text-sm font-bold tracking-widest uppercase">
-                        רמת חום {currentChallenge.spiciness}/10
+                        רמת חום: {getHeatLabel(currentChallenge.spiciness)}
                      </span>
-                     <div className="flex gap-1">
-                        {Array.from({ length: 10 }).map((_, i) => (
+                     <div className="flex gap-2">
+                        {Array.from({ length: 3 }).map((_, i) => (
                            <div
                              key={i}
-                             className={`w-3 h-8 rounded-full transition-all duration-300 ${
+                             className={`w-10 h-3 rounded-full transition-all duration-300 ${
                                i < currentChallenge.spiciness
-                                 ? "bg-gradient-to-t from-orange-600 to-yellow-400 shadow-[0_0_10px_rgba(251,191,36,0.5)]"
+                                 ? "bg-gradient-to-r from-orange-600 to-yellow-400 shadow-[0_0_10px_rgba(251,191,36,0.5)]"
                                  : "bg-gray-700/50"
                              }`}
                            />
@@ -388,7 +402,47 @@ export default function TruthOrDareGame() {
             </div>
           )}
 
-        {/* Penalty / Punishment Overlay */}
+        {/* Live Penalty Selection Preview (The Controller is deliberating...) */}
+        <AnimatePresence>
+            {gameState === "choosing_penalty" && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md"
+                >
+                    <div className="text-center">
+                        <Gavel size={80} className="mx-auto text-purple-500 mb-6 animate-bounce" />
+                        <h2 className="text-6xl font-black text-white mb-4">בוחרים עונש...</h2>
+                        
+                        {lastActivePlayer && (
+                            <div className="flex items-center justify-center gap-3 mb-8">
+                                <img src={lastActivePlayer.avatar} className="w-12 h-12 rounded-full border-2 border-purple-500" />
+                                <span className="text-2xl text-purple-300 font-bold">{lastActivePlayer.name} מחליט/ה</span>
+                            </div>
+                        )}
+
+                        <div className="h-64 flex items-center justify-center">
+                            {previewPenalty ? (
+                                <motion.div 
+                                    key={previewPenalty.text}
+                                    initial={{ scale: 0.8, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    className="bg-gray-800 border border-gray-600 p-8 rounded-3xl max-w-md"
+                                >
+                                    <div className="text-6xl mb-4">{renderPenaltyIcon(previewPenalty.type)}</div>
+                                    <h3 className="text-3xl font-bold">{previewPenalty.text}</h3>
+                                </motion.div>
+                            ) : (
+                                <p className="text-xl text-gray-500 animate-pulse">מתלבט/ת...</p>
+                            )}
+                        </div>
+                    </div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+
+        {/* Final Penalty Result */}
         <AnimatePresence>
           {gameState === "penalty" && (
             <motion.div
@@ -408,7 +462,7 @@ export default function TruthOrDareGame() {
               </motion.div>
 
               <h1 className="text-9xl font-black uppercase mb-4 text-white drop-shadow-[0_5px_5px_rgba(0,0,0,1)] border-4 border-white p-4">
-                {getPenaltyTitle(currentPenalty?.type)}
+                העונש נבחר!
               </h1>
               
               <h2 className="text-5xl font-bold text-white/90 mt-4 text-center px-4 leading-tight drop-shadow-md">
