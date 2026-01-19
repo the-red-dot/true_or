@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Flame, Trash2, LogOut, User as UserIcon, WifiOff, RefreshCw,
   Cpu, Beer, ThumbsUp, ThumbsDown, LogIn, Play, MessageCircleQuestion, Zap,
-  Citrus // עבור הלימון, אם אין בגרסה שלך נשתמש באימוג'י
+  Citrus, AlertTriangle
 } from "lucide-react";
 import QRCode from "react-qr-code";
 import Link from "next/link";
@@ -31,7 +31,7 @@ export default function TruthOrDareGame() {
     reactions,
     votes,
     shotVoteMode,
-    currentPenalty, // הוספנו את המשתנה הזה
+    currentPenalty,
     setHeatLevel,
     spinTheWheel,
     handleManualRefresh,
@@ -44,7 +44,6 @@ export default function TruthOrDareGame() {
   const renderPenaltyIcon = (type: string | undefined) => {
       switch (type) {
           case 'lemon': 
-            // משתמשים ב-Citrus או אימוג'י אם האייקון לא קיים
             return <div className="text-[150px]">🍋</div>;
           case 'vinegar': 
             return <div className="text-[150px]">🫗</div>; 
@@ -76,6 +75,13 @@ export default function TruthOrDareGame() {
           case 'garlic': return 'מסריח!';
           default: return 'SHOT!';
       }
+  };
+
+  // פונקציית עזר לצבעי רמת חום
+  const getHeatColorClass = (level: number) => {
+    if (level <= 3) return "text-green-400";
+    if (level <= 7) return "text-yellow-400";
+    return "text-red-500";
   };
 
   // --- Renders ---
@@ -319,20 +325,34 @@ export default function TruthOrDareGame() {
                 <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-12 rounded-[3rem] text-center shadow-2xl relative overflow-hidden pt-40">
                   <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-pink-500 to-cyan-500" />
                   
-                  <div className="flex justify-center mb-8">
+                  <div className="flex justify-between items-center mb-8 px-8">
+                    {/* סוג המשימה */}
                     <span
-                      className={`text-5xl font-black px-8 py-3 rounded-full shadow-lg ${
+                      className={`text-3xl font-black px-8 py-2 rounded-full shadow-lg border-2 ${
                         challengeType === "אמת"
-                          ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                          : "bg-pink-500/20 text-pink-400 border border-pink-500/30"
+                          ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                          : "bg-pink-500/20 text-pink-400 border-pink-500/30"
                       }`}
                     >
                       {challengeType}
                     </span>
+
+                    {/* תצוגת רמת חום */}
+                    <div className="flex flex-col items-center bg-black/40 px-6 py-2 rounded-2xl border border-white/10 shadow-inner">
+                        <div className="flex items-center gap-1 mb-1">
+                            {/* 3 להבות שמייצגות רמות שונות */}
+                            <Flame size={20} className={`${currentChallenge.spiciness >= 1 ? getHeatColorClass(currentChallenge.spiciness) : 'text-gray-700'} fill-current`} />
+                            <Flame size={20} className={`${currentChallenge.spiciness >= 4 ? getHeatColorClass(currentChallenge.spiciness) : 'text-gray-700'} fill-current`} />
+                            <Flame size={20} className={`${currentChallenge.spiciness >= 8 ? getHeatColorClass(currentChallenge.spiciness) : 'text-gray-700'} fill-current`} />
+                        </div>
+                        <span className={`text-xl font-black ${getHeatColorClass(currentChallenge.spiciness)} uppercase tracking-widest`}>
+                            רמה {currentChallenge.spiciness}
+                        </span>
+                    </div>
                   </div>
                   
                   <h3
-                    className="text-5xl md:text-7xl font-black leading-tight mb-12 drop-shadow-lg"
+                    className="text-5xl md:text-7xl font-black leading-tight mb-12 drop-shadow-lg px-4"
                     style={{ direction: "rtl" }}
                   >
                     {currentChallenge.content}
@@ -369,7 +389,7 @@ export default function TruthOrDareGame() {
             </div>
           )}
 
-        {/* Penalty / Punishment Overlay */}
+        {/* Penalty Overlay */}
         <AnimatePresence>
           {gameState === "penalty" && (
             <motion.div
@@ -403,7 +423,6 @@ export default function TruthOrDareGame() {
           )}
         </AnimatePresence>
 
-        {/* Group Shot Voting Result */}
         <AnimatePresence>
           {shotVoteMode && (
             <motion.div

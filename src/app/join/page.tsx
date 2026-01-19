@@ -5,7 +5,7 @@ import React, { Suspense } from "react";
 import { motion } from "framer-motion";
 import {
   Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, RefreshCw, LogOut,
-  MessageCircleQuestion, Zap, ShieldCheck // הוספתי ShieldCheck לאייקון הבטיחות
+  MessageCircleQuestion, Zap, ShieldCheck
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { usePlayerGameLogic } from "@/app/hooks/usePlayerGameLogic";
@@ -18,7 +18,7 @@ function GameController() {
     name, setName,
     gender, setGender,
     imagePreview, handleImageUpload,
-    // משתנים חדשים לבטיחות
+    // Safety
     isAdult, setIsAdult,
     personalMaxHeat, setPersonalMaxHeat,
     
@@ -40,7 +40,6 @@ function GameController() {
 
   // --- Render Functions ---
 
-  // 1. Error State
   if (!hostId) {
     return (
       <div className="text-white p-10 text-center flex flex-col items-center justify-center h-screen bg-black" dir="rtl">
@@ -52,7 +51,7 @@ function GameController() {
 
   const isAnonymous = (authUser as any)?.is_anonymous === true;
 
-  // 2. Controller View (Active Game)
+  // --- Active Game View ---
   if (isSubmitted && myPlayerId && gameState) {
     const isMyTurnToPlay = gameState.current_player_id === myPlayerId;
     const isMyTurnToSpin =
@@ -64,13 +63,13 @@ function GameController() {
     return (
       <div className="fixed inset-0 bg-gray-900 text-white flex flex-col overflow-hidden" dir="rtl">
         {/* Header */}
-        <div className="pt-4 px-4 pb-2 bg-gray-800/50 backdrop-blur-md border-b border-gray-700/50 flex justify-between items-center z-10">
+        <div className="pt-4 px-4 pb-2 bg-gray-800/50 backdrop-blur-md border-b border-gray-700/50 flex justify-between items-center z-10 shrink-0">
           <div className="flex items-center gap-3">
             {imagePreview && <img src={imagePreview} className="w-8 h-8 rounded-full object-cover border border-white" />}
             <span className="font-bold truncate max-w-[140px]">{name}</span>
           </div>
           <div className="flex gap-2 items-center">
-            <div className="text-[10px] px-2 py-1 bg-green-500/20 text-green-400 rounded-full border border-green-500/30 flex items-center">
+            <div className="hidden sm:flex text-[10px] px-2 py-1 bg-green-500/20 text-green-400 rounded-full border border-green-500/30 items-center">
               {isAnonymous ? "מחובר" : "מחובר"}
             </div>
             <button onClick={handleLeaveGame} className="p-1 bg-red-500/20 text-red-400 rounded-lg" title="צא מהמשחק">
@@ -79,12 +78,12 @@ function GameController() {
           </div>
         </div>
 
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col justify-center items-center p-6 relative w-full max-w-md mx-auto overflow-y-auto">
+        {/* Main Content Area - Scrollable */}
+        <div className="flex-1 flex flex-col p-4 w-full max-w-md mx-auto overflow-y-auto">
           
-          {/* SPIN CONTROLS */}
+          {/* 1. SPIN CONTROLS */}
           {isMyTurnToSpin && !isWaitingForChoice && (
-            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full space-y-6">
+            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex flex-col gap-6 justify-center h-full">
               <div className="text-center">
                 <h2 className="text-3xl font-black mb-1 text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">
                   {gameState.status === "lobby" ? "אתה מתחיל!" : "השרביט אצלך!"}
@@ -104,7 +103,7 @@ function GameController() {
                 <input
                   type="range"
                   min="1"
-                  max="10"
+                  max="10" 
                   step="1"
                   value={localHeat}
                   onChange={(e) => handleHeatChange(parseInt(e.target.value))}
@@ -125,9 +124,9 @@ function GameController() {
             </motion.div>
           )}
 
-          {/* CHOICE CONTROLS */}
+          {/* 2. CHOICE CONTROLS (Truth / Dare Buttons) */}
           {isWaitingForChoice && isMyTurnToPlay && (
-             <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full space-y-4">
+             <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex flex-col gap-4 justify-center h-full">
                <div className="text-center mb-6">
                  <h2 className="text-4xl font-black text-white">תורך לבחור!</h2>
                  <p className="text-gray-400">מה זה יהיה הפעם?</p>
@@ -151,47 +150,54 @@ function GameController() {
              </motion.div>
           )}
 
-          {/* OTHER PLAYER ACTIONS */}
+          {/* 3. ACTIVE CHALLENGE VIEW & STATUS */}
           {!isMyTurnToSpin && !isWaitingForChoice && (
-            <div className="w-full space-y-6">
+            <div className="w-full flex flex-col justify-center gap-4 h-full">
               
-              {/* Active Player Controls (Challenge Phase) */}
+              {/* Show Challenge Card to Active Player */}
               {isMyTurnToPlay && gameState.status === "challenge" && (
-                <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full">
-                  <div className="bg-gray-800/90 p-6 rounded-3xl border-2 border-pink-500 shadow-2xl mb-4 text-center">
-                    <h2 className="text-3xl font-black text-pink-400 mb-2">תורך!</h2>
-                    <p className="text-white/80 text-lg">{gameState.challenge_type}</p>
+                <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full flex flex-col gap-4 h-full justify-center">
+                  
+                  {/* The Challenge Card */}
+                  <div className="bg-gradient-to-br from-gray-800 to-gray-900 p-6 rounded-3xl border border-white/20 shadow-2xl relative overflow-hidden flex flex-col gap-4">
+                    <div className={`absolute top-0 left-0 w-full h-2 ${gameState.challenge_type === 'אמת' ? 'bg-blue-500' : 'bg-pink-500'}`} />
+                    
+                    <div className="flex justify-between items-start">
+                        <span className={`text-lg font-black px-4 py-1 rounded-full border ${gameState.challenge_type === 'אמת' ? 'bg-blue-500/20 text-blue-300 border-blue-500/50' : 'bg-pink-500/20 text-pink-300 border-pink-500/50'}`}>
+                            {gameState.challenge_type}
+                        </span>
+                        
+                        {/* Heat Level Indicator */}
+                        <div className="flex items-center gap-1 bg-black/40 px-3 py-1 rounded-xl border border-white/10">
+                            <Flame size={16} className={`${(gameState.heat_level || 0) > 6 ? 'text-red-500' : (gameState.heat_level || 0) > 3 ? 'text-yellow-400' : 'text-green-400'} fill-current`} /> 
+                            <span className="font-bold text-white">{gameState.heat_level}</span>
+                        </div>
+                    </div>
+
+                    <div className="py-4">
+                        <h3 className="text-2xl md:text-3xl font-black text-white leading-tight text-center" dir="rtl">
+                            {gameState.challenge_text}
+                        </h3>
+                    </div>
                   </div>
 
-                  <button
-                    onClick={() => sendVote("action_skip")}
-                    className="w-full py-5 bg-red-500/20 hover:bg-red-500/30 text-red-200 border-2 border-red-500 rounded-2xl font-bold text-xl flex items-center justify-center gap-3 active:scale-95 transition-all"
-                  >
-                    <XCircle /> אני מוותר (עונש!)
-                  </button>
-                  <p className="text-center text-xs text-gray-500 mt-2">לחיצה תעביר את התור</p>
+                  {/* Give Up Button */}
+                  <div className="mt-4">
+                      <button
+                        onClick={() => sendVote("action_skip")}
+                        className="w-full py-4 bg-red-500/10 hover:bg-red-500/20 text-red-200 border-2 border-red-500/50 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 active:scale-95 transition-all"
+                      >
+                        <XCircle size={24} /> אני מוותר (עונש!)
+                      </button>
+                      <p className="text-center text-[10px] text-gray-500 mt-2">לחיצה תעביר את התור לשחקן הבא</p>
+                  </div>
                 </motion.div>
               )}
 
-              {/* Spectator View */}
-              {!isMyTurnToPlay && gameState.status === "challenge" && (
-                <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-700">
-                  <h3 className="text-center font-bold mb-4 text-gray-300">מה דעתך על הביצוע?</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => sendVote("vote_like")} className="bg-green-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-green-500 transition-colors">👍</button>
-                    <button onClick={() => sendVote("vote_dislike")} className="bg-red-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-red-500 transition-colors">👎</button>
-                  </div>
-                  <button onClick={() => sendVote("vote_shot")} className="w-full mt-3 bg-orange-600/80 p-3 rounded-xl font-bold flex justify-center items-center gap-2 active:scale-95 hover:bg-orange-500 transition-colors">
-                    <Beer size={18} /> כולם שותים!
-                  </button>
-                </div>
-              )}
-
-              {/* Status Texts */}
-              {gameState.status !== "challenge" && (
-                <div className="text-center text-gray-400 animate-pulse">
+              {/* Status Texts for Spectators / Waiting */}
+              {(!isMyTurnToPlay || gameState.status !== "challenge") && (
+                <div className="text-center text-gray-400 animate-pulse flex flex-col items-center justify-center h-full">
                   {gameState.status === "spinning" && <div className="text-6xl animate-spin mb-4">🎲</div>}
-                  
                   {gameState.status === "waiting_for_choice" && (
                      <div className="flex flex-col items-center">
                          <div className="text-6xl mb-4 animate-bounce">🤔</div>
@@ -199,8 +205,9 @@ function GameController() {
                          {!isMyTurnToPlay && <p className="text-sm">השחקן חושב כרגע</p>}
                      </div>
                   )}
+                  {gameState.status === "revealing" && <div className="text-4xl animate-pulse">🤖</div>}
                   
-                  <p className="text-xl font-bold">
+                  <p className="text-xl font-bold mt-4">
                     {gameState.status === "lobby" ? "ממתינים למארח..." :
                      gameState.status === "waiting_for_spin" ? "ממתינים לסיבוב..." :
                      gameState.status === "spinning" ? "מגריל..." :
@@ -214,8 +221,8 @@ function GameController() {
           )}
         </div>
 
-        {/* Emoji Bar */}
-        <div className="w-full pt-3 pb-6 bg-gray-900 border-t border-gray-800 z-10">
+        {/* Emoji Bar - Fixed at bottom */}
+        <div className="w-full pt-3 pb-6 bg-gray-900 border-t border-gray-800 z-10 shrink-0">
           <p className="text-center text-[10px] text-gray-500 mb-2 font-bold uppercase tracking-widest">תגובה מהירה</p>
           <div className="flex justify-between gap-2 overflow-x-auto pb-2 scrollbar-hide px-2">
             {[{ icon: "😂" }, { icon: "😱" }, { icon: "😍" }, { icon: "🤢" }, { icon: "😈" }, { icon: "🫣" }, { icon: "🔥" }].map(
@@ -235,7 +242,7 @@ function GameController() {
     );
   }
 
-  // 3. Registration View
+  // --- Registration View ---
   return (
     <div className="min-h-[100dvh] bg-black text-white p-6 flex flex-col items-center justify-center text-center" dir="rtl">
       <div className="w-full max-w-sm space-y-6">
@@ -272,7 +279,7 @@ function GameController() {
           ))}
         </div>
 
-        {/* Safety Settings Card - החדש! */}
+        {/* Safety Settings Card */}
         <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700 w-full text-right">
             <div className="flex items-center gap-2 mb-4 text-gray-300 border-b border-gray-700 pb-2">
                 <ShieldCheck size={18} className="text-green-400" />
