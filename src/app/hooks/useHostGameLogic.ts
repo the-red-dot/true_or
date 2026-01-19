@@ -651,6 +651,9 @@ export const useHostGameLogic = (
         .then((res) => res.json())
         .then((data) => {
           setCurrentChallenge(data);
+          // עדכון רמת החום של המשחק לרמת החום של המשימה שהתקבלה
+          // זה יגרום לסנכרון מול ה-DB ולעדכון כל הלקוחות
+          setHeatLevel(data.spiciness); 
           setGameState("challenge");
         })
         .catch((err) => {
