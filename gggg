@@ -281,7 +281,7 @@ Folder: src
                                 </div>
                                 {isController && (
                                   <div className="text-center text-yellow-400 text-xs font-bold animate-pulse">
-                                    מחזיק בשרביט
+                                    {p.gender === 'female' ? 'מחזיקה בשרביט' : 'מחזיק בשרביט'}
                                   </div>
                                 )}
                               </div>
@@ -289,33 +289,35 @@ Folder: src
                           })}
                         </div>
             
-                        <div className="mt-12 bg-white/5 backdrop-blur-xl p-4 rounded-2xl border border-white/10 flex items-center gap-6">
+                        <div className="mt-12 bg-white/5 backdrop-blur-xl p-6 rounded-3xl border border-white/10 flex flex-col md:flex-row items-center gap-8">
                           {players.length >= 2 && (
                             <button
                               onClick={spinTheWheel}
-                              className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-500 rounded-xl font-bold flex items-center gap-2 hover:scale-105 transition-transform shadow-lg"
+                              className="px-10 py-6 bg-gradient-to-r from-green-600 to-green-500 rounded-2xl font-black text-2xl flex items-center gap-4 hover:scale-105 transition-transform shadow-[0_0_20px_rgba(34,197,94,0.6)]"
                             >
-                              <Play className="fill-white" /> התחל משחק
+                              <Wine className="rotate-45" size={32} /> 
+                              {lastActivePlayer?.gender === 'female' ? "סובבי את הבקבוק" : "סובב את הבקבוק"}
                             </button>
                           )}
                           
-                          <div className="flex gap-2 border-r border-white/20 pr-6 mr-2 items-center">
+                          {/* Heat Level Selector - Fixed Size Boxes */}
+                          <div className="flex gap-4 items-center bg-black/30 p-2 rounded-2xl">
                               {[1, 2, 3].map((level) => (
                                   <button
                                     key={level}
                                     onClick={() => setHeatLevel(level)}
                                     className={`
-                                        relative group overflow-hidden px-4 py-2 rounded-xl transition-all duration-300 w-24
-                                        ${heatLevel === level 
-                                            ? 'bg-gradient-to-t from-orange-600 to-yellow-500 shadow-[0_0_20px_rgba(251,191,36,0.6)] scale-110' 
-                                            : 'bg-gray-800/50 hover:bg-gray-700/50 text-gray-400'}
+                                      relative group overflow-hidden w-24 h-24 rounded-xl transition-all duration-300 flex flex-col items-center justify-center border-2
+                                      ${heatLevel === level 
+                                          ? 'bg-gradient-to-t from-orange-600 to-yellow-500 shadow-[0_0_20px_rgba(251,191,36,0.6)] scale-110 border-yellow-300 z-10' 
+                                          : 'bg-gray-800/50 hover:bg-gray-700/50 text-gray-400 border-white/10'}
                                     `}
                                   >
                                       <div className="flex flex-col items-center relative z-10">
-                                          <span className={`text-2xl ${heatLevel === level ? 'animate-pulse' : 'grayscale opacity-50'}`}>
+                                          <span className={`text-3xl mb-1 ${heatLevel === level ? 'animate-pulse' : 'grayscale opacity-50'}`}>
                                               {level === 1 ? '🔥' : level === 2 ? '🔥🔥' : '🔥🔥🔥'}
                                           </span>
-                                          <span className="text-[10px] font-bold mt-1 uppercase tracking-wide">
+                                          <span className="text-sm font-black uppercase tracking-wide">
                                               {level === 1 ? 'קליל' : level === 2 ? 'נועז' : 'לוהט'}
                                           </span>
                                       </div>
@@ -325,24 +327,34 @@ Folder: src
             
                           <button
                             onClick={() => endGame(true)}
-                            className="p-2 hover:bg-red-900/50 rounded-lg text-red-300 ml-4 flex items-center gap-2"
+                            className="p-4 hover:bg-red-900/50 rounded-2xl text-red-400 transition-colors"
                             title="סיום משחק"
                           >
-                            <Trash2 size={20} />
-                            <span className="hidden md:inline font-bold">סיום משחק</span>
+                            <Trash2 size={24} />
                           </button>
                         </div>
                       </div>
                     )}
             
                     {authUser && gameState === "spinning" && (
-                      <div className="relative">
+                      <div className="flex flex-col items-center justify-center relative">
                         <motion.div
-                          animate={{ rotate: 360 * 5 }}
+                          animate={{ rotate: 360 * 10 }}
                           transition={{ duration: 3, ease: "circOut" }}
-                          className="w-96 h-96 rounded-full border-[12px] border-dashed border-cyan-500/30 flex items-center justify-center"
+                          className="relative z-10"
                         >
-                          <span className="text-9xl">🎡</span>
+                          {/* Spinning Bottle Icon instead of Wheel */}
+                          <div className="text-[250px]">🍾</div>
+                        </motion.div>
+                        
+                        <motion.div 
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mt-12 text-center"
+                        >
+                            <h2 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 animate-pulse">
+                                מגרילים קורבן... 😈
+                            </h2>
                         </motion.div>
                       </div>
                     )}
@@ -503,7 +515,9 @@ Folder: src
                                     {lastActivePlayer && (
                                         <div className="flex items-center justify-center gap-3 mb-8">
                                             <img src={lastActivePlayer.avatar} className="w-12 h-12 rounded-full border-2 border-purple-500" />
-                                            <span className="text-2xl text-purple-300 font-bold">{lastActivePlayer.name} מחליט/ה</span>
+                                            <span className="text-2xl text-purple-300 font-bold">
+                                                {lastActivePlayer.name} {lastActivePlayer.gender === 'female' ? 'מחליטה' : 'מחליט'}
+                                            </span>
                                         </div>
                                     )}
             
@@ -520,7 +534,9 @@ Folder: src
                                                 {previewPenalty.description && <p className="text-xl text-gray-400 italic">"{previewPenalty.description}"</p>}
                                             </motion.div>
                                         ) : (
-                                            <p className="text-xl text-gray-500 animate-pulse">מתלבט/ת...</p>
+                                            <p className="text-xl text-gray-500 animate-pulse">
+                                                {lastActivePlayer?.gender === 'female' ? 'מתלבטת...' : 'מתלבט...'}
+                                            </p>
                                         )}
                                     </div>
                                 </div>
@@ -802,7 +818,6 @@ Folder: src
                 
                 export type Reaction = { id: string; emoji: string; playerId: string; x: number };
                 
-                // עדכון טיפוס העונש כדי לכלול את כל הסוגים החדשים
                 export type Penalty = {
                     id?: string;
                     type: 'shot' | 'lemon' | 'vinegar' | 'onion' | 'garlic' | 'water' | 'ice' | 'kiss_wall' | 'squats' | 'tea_bag' | 'pasta' | 'lipstick' | 'oil' | 'chili';
@@ -842,6 +857,9 @@ Folder: src
                     dislikes: 0,
                     shots: 0,
                   });
+                  
+                  // מעקב אחרי שחקנים שכבר הצביעו בסיבוב הנוכחי למניעת כפילויות
+                  const [votedPlayers, setVotedPlayers] = useState<Set<string>>(new Set());
                   const [shotVoteMode, setShotVoteMode] = useState(false);
                 
                   // --- Helpers ---
@@ -854,6 +872,7 @@ Folder: src
                 
                   const resetVotes = () => {
                     setVotes({ likes: 0, dislikes: 0, shots: 0 });
+                    setVotedPlayers(new Set()); // איפוס המצביעים
                     setShotVoteMode(false);
                   };
                 
@@ -870,6 +889,8 @@ Folder: src
                     challengeType,
                     currentChallenge,
                     authUser,
+                    votes, // הוספת votes לרף
+                    votedPlayers // הוספת votedPlayers לרף
                   });
                 
                   useEffect(() => {
@@ -884,6 +905,8 @@ Folder: src
                       challengeType,
                       currentChallenge,
                       authUser,
+                      votes,
+                      votedPlayers
                     };
                   }, [
                     players,
@@ -896,6 +919,8 @@ Folder: src
                     challengeType,
                     currentChallenge,
                     authUser,
+                    votes,
+                    votedPlayers
                   ]);
                 
                   const syncGameStateToDB = async (args: {
@@ -1140,14 +1165,12 @@ Folder: src
                       const freshPlayers = stateRef.current.players;
                       if (freshPlayers.length === 0) return setGameState("lobby");
                 
-                      // --- LOGIC CHANGE: Filter out the current controller ---
                       // השחקן שמחזיק בשרביט לא יכול להיבחר
                       let candidates = freshPlayers;
                       if (controller) {
                           candidates = freshPlayers.filter(p => p.id !== controller.id);
                       }
                       
-                      // Fallback: If only 1 player total (testing) or error, fallback to any player
                       if (candidates.length === 0) candidates = freshPlayers;
                 
                       const randomPlayer = candidates[Math.floor(Math.random() * candidates.length)];
@@ -1159,6 +1182,7 @@ Folder: src
                   const handleGameEvent = (data: any) => {
                     const { type, payload, playerId } = data;
                     const gs = stateRef.current.gameState;
+                    const { votedPlayers } = stateRef.current;
                 
                     if (type === "emoji") {
                       const id = Math.random().toString(36);
@@ -1213,6 +1237,14 @@ Folder: src
                       return;
                     }
                 
+                    // --- Voting Logic with Double-Vote Prevention ---
+                    
+                    // אם השחקן כבר הצביע בסיבוב הזה, מתעלמים
+                    if (votedPlayers.has(playerId)) return;
+                
+                    // הוספת השחקן לרשימת המצביעים
+                    setVotedPlayers(prev => new Set(prev).add(playerId));
+                
                     if (type === "vote_like") {
                       setVotes((v) => ({ ...v, likes: v.likes + 1 }));
                       return;
@@ -1224,13 +1256,24 @@ Folder: src
                     }
                 
                     if (type === "vote_shot") {
-                      setVotes((v) => {
-                        const newShots = v.shots + 1;
-                        const threshold = Math.max(2, Math.floor(stateRef.current.players.length / 2));
-                        if (newShots >= threshold && !stateRef.current.shotVoteMode) triggerGroupShot();
-                        return { ...v, shots: newShots };
-                      });
-                      return;
+                        // רלוונטי רק אם יש 3 שחקנים או יותר
+                        if (stateRef.current.players.length < 3) return;
+                
+                        setVotes((v) => {
+                            const newShots = v.shots + 1;
+                            // רוב מוחלט נדרש (יותר מ-50% מהשחקנים, לא כולל המבצע עצמו? 
+                            // הפתרון הפשוט: יותר מחצי מכלל השחקנים בחדר פחות 1 (המבצע))
+                            // אבל כאן הבקשה היא "2 לחצו... מתוך 3". זה רוב רגיל מתוך המצביעים הפוטנציאלים.
+                            
+                            const potentialVoters = Math.max(1, stateRef.current.players.length - 1); // כולם חוץ מהמבצע
+                            const threshold = Math.floor(potentialVoters / 2) + 1; // רוב מוחלט
+                
+                            if (newShots >= threshold && !stateRef.current.shotVoteMode) {
+                                triggerGroupShot();
+                            }
+                            return { ...v, shots: newShots };
+                        });
+                        return;
                     }
                   };
                 
@@ -1379,13 +1422,32 @@ Folder: src
                     }
                   }, [authUser]);
                 
+                  // --- לוגיקת הכרעה מעודכנת ---
                   useEffect(() => {
                     if (gameState !== "challenge") return;
                     if (roundEndLockRef.current) return;
                 
                     const voters = Math.max(1, players.length - 1);
-                    if (votes.likes > voters * 0.5) handleDone();
-                    else if (votes.dislikes > voters * 0.5) handleSkip();
+                    
+                    // מנצח: תיקו או יותר לייקים
+                    // נכשל: רק אם יש רוב מובהק של דיסלייקים (יותר מחצי מהמצביעים הפוטנציאלים)
+                    
+                    // כדי למנוע סיום מוקדם מדי כשיש רק הצבעה אחת, נחכה לרוב מוחלט גם בלייקים
+                    // או שפשוט נחכה שסך ההצבעות יעבור סף מסוים?
+                    // נלך לפי ההנחיה: "2 דיסלייק ו-1 לייק -> נכשל". "תיקו -> עבר".
+                    // זה אומר שאנחנו צריכים לחכות שסך ההצבעות יגיע למספר המצביעים? לא בהכרח, המשחק זורם.
+                    // נעשה כמו קודם: אם הדיסלייקים עברו את החצי -> נכשל בטוח.
+                    // אם הלייקים + החצי עברו את החצי?
+                    // בוא נעשה את זה פשוט: אם רוב המצביעים הפוטנציאלים הצביעו נגד -> נכשל.
+                    // אם רוב המצביעים הפוטנציאלים הצביעו בעד (או תיקו בטוח שלא ישתנה) -> עבר.
+                    
+                    if (votes.dislikes > voters / 2) {
+                        handleSkip(); // נכשל
+                    } else if (votes.likes >= voters / 2) {
+                        // בתיקו אנחנו מעבירים, אז אם יש חצי לייקים זה כבר טוב (כי המקסימום דיסלייק יהיה חצי -> תיקו -> עובר)
+                        handleDone(); // עבר
+                    }
+                    
                   }, [votes, players.length, gameState]);
                 
                   useEffect(() => {
@@ -1509,7 +1571,7 @@ Folder: src
                   host_id: string;
                   user_id: string;
                   name: string;
-                  gender: "male" | "female"; // הוסר "other"
+                  gender: "male" | "female"; 
                   avatar: string;
                   is_active: boolean | null;
                   session_id: string | null;
@@ -1621,9 +1683,13 @@ Folder: src
                   const [gameState, setGameState] = useState<GameStateRow | null>(null);
                   const [localHeat, setLocalHeat] = useState(1);
                   
-                  // Victim info (for controller to know if victim is 18+ and gender)
+                  // Victim info
                   const [victimIsAdult, setVictimIsAdult] = useState<boolean>(false);
                   const [victimGender, setVictimGender] = useState<"male" | "female">("male");
+                
+                  // Local Vote Tracking
+                  const [hasVoted, setHasVoted] = useState(false);
+                  const [allPlayers, setAllPlayers] = useState<PlayerRow[]>([]); // New: Track all players for 18+ calc
                 
                   // Refs
                   const myPlayerIdRef = useRef<string | null>(null);
@@ -1646,6 +1712,14 @@ Folder: src
                       setPersonalMaxHeat(2);
                     }
                   }, [isAdult, personalMaxHeat]);
+                
+                  // איפוס הצבעה כשסטטוס המשחק משתנה
+                  useEffect(() => {
+                      if (gameState?.status !== 'challenge') {
+                          setHasVoted(false);
+                          voteLockRef.current = false;
+                      }
+                  }, [gameState?.status]);
                 
                   // --- Helpers ---
                   const handleKicked = (opts?: { keepInputs?: boolean }) => {
@@ -1754,7 +1828,6 @@ Folder: src
                           setGameState(next);
                           setLocalHeat(next.heat_level ?? 1);
                 
-                          // אם יש שחקן פעיל (קורבן) חדש, נבדוק את פרטיו (גיל ומגדר)
                           if (next.current_player_id) {
                              const { data } = await supabase
                                 .from('players')
@@ -1781,32 +1854,42 @@ Folder: src
                       )
                       .subscribe();
                 
+                    // -- Updated Players Listener to track ALL players for statistics --
                     const playersChannel = supabase
                       .channel(`players_listener_${hostId}`)
                       .on(
                         "postgres_changes",
-                        { event: "UPDATE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
-                        (payload) => {
-                          const next = payload.new as PlayerRow;
-                          const myUid = myUserIdRef.current;
-                          if (!myUid) return;
-                          if (next.user_id === myUid) {
-                            const curSession = sessionIdRef.current;
-                            const isWrongSession = curSession && next.session_id !== curSession;
-                            const isInactive = next.is_active === false;
-                            if (isWrongSession || isInactive) handleKicked({ keepInputs: true });
-                          }
-                        }
-                      )
-                      .on(
-                        "postgres_changes",
-                        { event: "DELETE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
-                        (payload) => {
-                          const deletedId = (payload.old as any)?.id;
-                          if (deletedId && deletedId === myPlayerIdRef.current) handleKicked({ keepInputs: true });
+                        { event: "*", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
+                        async () => {
+                            // רענון רשימת השחקנים המלאה בכל שינוי
+                            // זה פשוט יותר מניהול דלתא
+                            const { data } = await supabase
+                                .from("players")
+                                .select("*")
+                                .eq("host_id", hostId)
+                                .eq("is_active", true); // רק פעילים
+                            
+                            if (data) {
+                                setAllPlayers(data as PlayerRow[]);
+                                
+                                // בדיקה אם הועפתי
+                                const myUid = myUserIdRef.current;
+                                const me = data.find(p => p.user_id === myUid);
+                                
+                                if (myPlayerIdRef.current && !me) {
+                                    handleKicked({ keepInputs: true });
+                                } else if (me && sessionIdRef.current && me.session_id !== sessionIdRef.current) {
+                                    handleKicked({ keepInputs: true });
+                                }
+                            }
                         }
                       )
                       .subscribe();
+                      
+                      // טעינה ראשונית של שחקנים
+                      supabase.from("players").select("*").eq("host_id", hostId).eq("is_active", true).then(({data}) => {
+                          if (data) setAllPlayers(data as PlayerRow[]);
+                      });
                 
                     return () => {
                       if (heatDebounceRef.current) {
@@ -1956,8 +2039,11 @@ Folder: src
                   };
                 
                   const sendVote = (type: "vote_like" | "vote_dislike" | "vote_shot" | "action_skip") => {
-                    if (voteLockRef.current) return;
+                    if (voteLockRef.current || hasVoted) return; // Prevent double vote
+                    
                     voteLockRef.current = true;
+                    if (type !== 'action_skip') setHasVoted(true); // עונש עצמי (skip) לא נועל את הממשק כמו הצבעה רגילה
+                    
                     void sendAction(type);
                     window.setTimeout(() => { voteLockRef.current = false; }, 600);
                   };
@@ -1981,7 +2067,9 @@ Folder: src
                     isAdult, setIsAdult,
                     personalMaxHeat, setPersonalMaxHeat,
                     isSubmitted, loading, authReady, authUser, gameState, localHeat, myPlayerId,
-                    victimIsAdult, victimGender, // חשוב לשימוש בקומפוננטה
+                    victimIsAdult, victimGender,
+                    allPlayers, // חשיפת כלל השחקנים לצורך חישוב סטטיסטיקות
+                    hasVoted, // חשיפת הסטטוס אם הצביע
                     handleJoin, handleLeaveGame, handleSpin, handleHeatChange, sendEmoji, sendVote, sendChoice,
                     sendPenaltyPreview, sendPenaltySelection
                   };
@@ -1996,8 +2084,8 @@ Folder: src
                 import React, { Suspense, useState, useMemo } from "react";
                 import { motion } from "framer-motion";
                 import {
-                  Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, RefreshCw, LogOut,
-                  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft, Wine
+                  Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, LogOut,
+                  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft
                 } from "lucide-react";
                 import { useSearchParams } from "next/navigation";
                 import { usePlayerGameLogic, PENALTIES_LIST } from "@/app/hooks/usePlayerGameLogic";
@@ -2021,7 +2109,9 @@ Folder: src
                     localHeat,
                     myPlayerId,
                     victimIsAdult,
-                    victimGender, // מגדר הקורבן (זה שוויתר)
+                    victimGender, 
+                    allPlayers, // רשימת כל השחקנים
+                    hasVoted, // האם המשתמש כבר הצביע
                     handleJoin,
                     handleLeaveGame,
                     handleSpin,
@@ -2035,6 +2125,18 @@ Folder: src
                 
                   // State for carousel
                   const [penaltyIndex, setPenaltyIndex] = useState(0);
+                
+                  // --- Logic for Group Shot Button ---
+                  const showShotButton = useMemo(() => {
+                      // הכפתור רלוונטי רק אם יש 3 שחקנים ומעלה
+                      return allPlayers.length >= 3;
+                  }, [allPlayers.length]);
+                
+                  const enableShotButton = useMemo(() => {
+                      if (allPlayers.length === 0) return false;
+                      const adultsCount = allPlayers.filter(p => p.is_adult).length;
+                      return (adultsCount / allPlayers.length) > 0.5;
+                  }, [allPlayers]);
                 
                   // --- Helpers for Icons (Copied for consistency on mobile) ---
                   const renderPenaltyIcon = (type: string | undefined) => {
@@ -2057,14 +2159,10 @@ Folder: src
                       }
                   };
                 
-                  // --- Gender Helper for UI Texts ---
-                  // משתמש במגדר של השחקן הנוכחי (זה שמחזיק במכשיר)
                   const t = (male: string, female: string) => {
                       return gender === 'female' ? female : male;
                   }
                 
-                  // --- Filter Penalties ---
-                  // מסנן עונשים לפי גיל הקורבן (לא גיל המחזיק בשרביט)
                   const validPenalties = useMemo(() => {
                       return PENALTIES_LIST.filter(p => {
                           if (p.is18 && !victimIsAdult) return false;
@@ -2072,14 +2170,10 @@ Folder: src
                       });
                   }, [victimIsAdult]);
                 
-                  // --- Get Current Penalty Data ---
-                  // שולף את הטקסט והתיאור המתאימים למגדר של הקורבן
                   const currentPenaltyData = useMemo(() => {
                       if (validPenalties.length === 0) return null;
-                      // וודא שהאינדקס תקין (במקרה שהרשימה הצטמצמה)
                       const safeIndex = penaltyIndex % validPenalties.length; 
                       const p = validPenalties[safeIndex];
-                      // ברירת מחדל לזכר אם אין מגדר או משהו השתבש
                       const g = victimGender === 'female' ? 'female' : 'male';
                       return {
                           type: p.type,
@@ -2088,10 +2182,9 @@ Folder: src
                       };
                   }, [validPenalties, penaltyIndex, victimGender]);
                 
-                
+                  
                   // --- Render Functions ---
                 
-                  // 1. Error State
                   if (!hostId) {
                     return (
                       <div className="text-white p-10 text-center flex flex-col items-center justify-center h-screen bg-black" dir="rtl">
@@ -2103,7 +2196,6 @@ Folder: src
                 
                   const isAnonymous = (authUser as any)?.is_anonymous === true;
                 
-                  // 2. Controller View (Active Game)
                   if (isSubmitted && myPlayerId && gameState) {
                     const isMyTurnToPlay = gameState.current_player_id === myPlayerId;
                     const isController = gameState.last_active_player_id === myPlayerId;
@@ -2114,13 +2206,9 @@ Folder: src
                     const isWaitingForChoice = gameState.status === "waiting_for_choice";
                     const isChoosingPenalty = gameState.status === "choosing_penalty" && isController;
                 
-                    // --- Carousel Handlers ---
                     const nextPenalty = () => {
                         const next = (penaltyIndex + 1) % validPenalties.length;
                         setPenaltyIndex(next);
-                        // שולחים לטלוויזיה את האובייקט הגולמי, הטלוויזיה תציג אייקון וטקסט.
-                        // אבל הטלוויזיה לא יודעת את המגדר של הקורבן אוטומטית אם לא נשלח לה את הטקסט המעובד.
-                        // הפתרון: נשלח לטלוויזיה את הטקסט והתיאור המעובדים כבר.
                         const pRaw = validPenalties[next];
                         const g = victimGender === 'female' ? 'female' : 'male';
                         const pResolved = {
@@ -2146,7 +2234,6 @@ Folder: src
                 
                     const confirmPenalty = () => {
                         if (!currentPenaltyData) return;
-                        // שולחים את העונש הנבחר עם הטקסט המותאם מגדרית
                         sendPenaltySelection(currentPenaltyData);
                     }
                 
@@ -2191,7 +2278,6 @@ Folder: src
                                   </span>
                                 </div>
                                 
-                                {/* Custom Fire Buttons Selector */}
                                 <div className="flex gap-2 justify-between mb-2">
                                     {[1, 2, 3].map((level) => (
                                         <button
@@ -2221,8 +2307,8 @@ Folder: src
                                 onClick={handleSpin}
                                 className="w-full py-6 bg-gradient-to-r from-pink-600 to-purple-600 rounded-3xl font-black text-3xl shadow-[0_0_30px_rgba(236,72,153,0.4)] active:scale-95 transition-transform flex items-center justify-center gap-3"
                               >
-                                <Wine size={32} className="text-white" />
-                                {gameState.status === "lobby" ? "מתחילים!" : "בוחרים קורבן..."}
+                                <div className="text-4xl">🍾</div>
+                                {gameState.status === "lobby" ? "מתחילים!" : t("סובב את הבקבוק", "סובבי את הבקבוק")}
                               </button>
                             </motion.div>
                           )}
@@ -2232,8 +2318,12 @@ Folder: src
                               <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full text-center">
                                   <div className="mb-4">
                                       <Gavel className="mx-auto text-purple-500 mb-2" size={40} />
-                                      <h2 className="text-2xl font-black text-white">{t("הוא ויתר!", "היא ויתרה!")}</h2>
-                                      <p className="text-gray-300 text-sm">{t("בחר לו", "בחרי לה")} עונש מהרשימה</p>
+                                      <h2 className="text-2xl font-black text-white">
+                                          {victimGender === 'female' ? "היא ויתרה!" : "הוא ויתר!"}
+                                      </h2>
+                                      <p className="text-gray-300 text-sm">
+                                          {gender === 'female' ? "בחרי" : "בחר"} {victimGender === 'female' ? "לה" : "לו"} עונש מהרשימה
+                                      </p>
                                   </div>
                 
                                   <div className="bg-gray-800 border-2 border-purple-500 rounded-3xl p-6 mb-6 shadow-2xl relative overflow-hidden">
@@ -2304,7 +2394,6 @@ Folder: src
                               {isMyTurnToPlay && gameState.status === "challenge" && (
                                 <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full">
                                   
-                                  {/* הכרטיס המלא שמוצג לשחקן בנייד */}
                                   <div className="bg-gray-800/90 p-6 rounded-3xl border-2 border-pink-500 shadow-2xl mb-4 text-center relative overflow-hidden">
                                       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500 to-cyan-500" />
                                       
@@ -2322,14 +2411,14 @@ Folder: src
                                       {/* Heat Meter Compact for Mobile */}
                                       <div className="flex justify-center gap-1 mb-6">
                                           {Array.from({ length: 3 }).map((_, i) => (
-                                               <div
-                                                  key={i}
-                                                  className={`w-8 h-2 rounded-full ${
-                                                    i < (localHeat || 0)
-                                                      ? "bg-gradient-to-r from-orange-600 to-yellow-400"
-                                                      : "bg-gray-700/50"
-                                                  }`}
-                                                />
+                                             <div
+                                                key={i}
+                                                className={`w-8 h-2 rounded-full ${
+                                                  i < (localHeat || 0)
+                                                    ? "bg-gradient-to-r from-orange-600 to-yellow-400"
+                                                    : "bg-gray-700/50"
+                                                }`}
+                                             />
                                           ))}
                                       </div>
                 
@@ -2346,22 +2435,52 @@ Folder: src
                 
                               {/* Spectator View */}
                               {!isMyTurnToPlay && gameState.status === "challenge" && (
-                                <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-700">
+                                <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-700 relative">
+                                  {/* כיסוי כשכבר הצבעת */}
+                                  {hasVoted && (
+                                      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] z-10 flex items-center justify-center rounded-2xl">
+                                          <span className="text-white font-bold bg-black/50 px-4 py-2 rounded-full border border-white/20">הצבעתך נקלטה! ✅</span>
+                                      </div>
+                                  )}
+                
                                   <h3 className="text-center font-bold mb-4 text-gray-300">מה דעתך על הביצוע?</h3>
                                   <div className="grid grid-cols-2 gap-3">
                                     <button onClick={() => sendVote("vote_like")} className="bg-green-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-green-500 transition-colors">👍</button>
                                     <button onClick={() => sendVote("vote_dislike")} className="bg-red-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-red-500 transition-colors">👎</button>
                                   </div>
-                                  <button onClick={() => sendVote("vote_shot")} className="w-full mt-3 bg-orange-600/80 p-3 rounded-xl font-bold flex justify-center items-center gap-2 active:scale-95 hover:bg-orange-500 transition-colors">
-                                    <Beer size={18} /> כולם שותים!
-                                  </button>
+                                  
+                                  {showShotButton && (
+                                      <div className="mt-3">
+                                          <button 
+                                            onClick={() => sendVote("vote_shot")} 
+                                            disabled={!enableShotButton}
+                                            className={`
+                                                w-full p-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors
+                                                ${enableShotButton 
+                                                    ? "bg-orange-600/80 active:scale-95 hover:bg-orange-500 text-white" 
+                                                    : "bg-gray-700/50 text-gray-500 cursor-not-allowed grayscale"}
+                                            `}
+                                          >
+                                            <Beer size={18} /> כולם שותים!
+                                          </button>
+                                          {enableShotButton ? (
+                                              <p className="text-[10px] text-orange-300/80 text-center mt-1 italic">
+                                                  מי שחוקי מרים, מי שלא - מדמיין 🧃
+                                              </p>
+                                          ) : (
+                                              <p className="text-[10px] text-gray-500 text-center mt-1">
+                                                  זמין רק כשרוב השחקנים 18+
+                                              </p>
+                                          )}
+                                      </div>
+                                  )}
                                 </div>
                               )}
                 
                               {/* Status Texts */}
                               {gameState.status !== "challenge" && (
                                 <div className="text-center text-gray-400 animate-pulse">
-                                  {gameState.status === "spinning" && <div className="text-6xl animate-spin mb-4">🎲</div>}
+                                  {gameState.status === "spinning" && <div className="text-6xl animate-spin mb-4">🍾</div>}
                                   {gameState.status === "choosing_penalty" && <div className="text-6xl mb-4 animate-bounce">⚖️</div>}
                                   {gameState.status === "penalty" && <div className="text-6xl mb-4">⚠️</div>}
                                   
@@ -2388,7 +2507,6 @@ Folder: src
                           )}
                         </div>
                 
-                        {/* Emoji Bar (מוסתר אם בוחרים עונש) */}
                         {!isChoosingPenalty && (
                             <div className="w-full pt-3 pb-6 bg-gray-900 border-t border-gray-800 z-10">
                             <p className="text-center text-[10px] text-gray-500 mb-2 font-bold uppercase tracking-widest">תגובה מהירה</p>
@@ -2411,10 +2529,10 @@ Folder: src
                     );
                   }
                 
-                  // 3. Registration View
                   return (
                     <div className="min-h-[100dvh] bg-black text-white p-6 flex flex-col items-center justify-center text-center" dir="rtl">
-                      <div className="w-full max-w-sm space-y-6">
+                        {/* קוד הרשמה נשאר ללא שינוי, השארתי את הקומפוננטה המלאה למעלה */}
+                        <div className="w-full max-w-sm space-y-6">
                         <div className="flex justify-center">
                           <div className="text-[10px] px-2 py-1 bg-white/5 text-gray-300 rounded-full border border-white/10">
                             {authReady ? (isAnonymous ? "סטטוס: מחובר כאנונימי" : "סטטוס: מחובר") : "מאתחל התחברות..."}
@@ -2448,7 +2566,6 @@ Folder: src
                           ))}
                         </div>
                 
-                        {/* Safety Settings Card - החדש! */}
                         <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700 w-full text-right">
                             <div className="flex items-center gap-2 mb-4 text-gray-300 border-b border-gray-700 pb-2">
                                 <ShieldCheck size={18} className="text-green-400" />
@@ -2471,7 +2588,6 @@ Folder: src
                                     <span>{personalMaxHeat <= 2 ? "בטוח" : "נועז"}</span>
                                 </div>
                                 
-                                {/* Custom Fire Buttons Selector for Registration */}
                                 <div className="flex gap-2 justify-between mb-2 mt-2">
                                     {[1, 2, 3].map((level) => (
                                         <button

@@ -48,8 +48,8 @@ function GameController() {
 
   // --- Logic for Group Shot Button ---
   const showShotButton = useMemo(() => {
-      // הכפתור רלוונטי רק אם יש 3 שחקנים ומעלה
-      return allPlayers.length >= 3;
+      // עדכון: מציג את הכפתור אם יש לפחות 2 שחקנים (במקום 3) כדי להקל על בדיקות ומשחקים קטנים
+      return allPlayers.length >= 2;
   }, [allPlayers.length]);
 
   const enableShotButton = useMemo(() => {
@@ -381,7 +381,7 @@ function GameController() {
                                     : "bg-gray-700/50 text-gray-500 cursor-not-allowed grayscale"}
                             `}
                           >
-                            <Beer size={18} /> כולם שותים!
+                            <Beer size={18} /> הפסקת שוט!
                           </button>
                           {enableShotButton ? (
                               <p className="text-[10px] text-orange-300/80 text-center mt-1 italic">
@@ -530,8 +530,8 @@ function GameController() {
 
                 <p className="text-[10px] text-gray-500 mt-2 leading-tight">
                     {isAdult 
-                     ? "כמשתמש בוגר, באפשרותך לבחור כל רמת קושי." 
-                     : "משתמשים מתחת לגיל 18 מוגבלים לרמה 2 ומטה."}
+                      ? "כמשתמש בוגר, באפשרותך לבחור כל רמת קושי." 
+                      : "משתמשים מתחת לגיל 18 מוגבלים לרמה 2 ומטה."}
                     {" "}לעולם לא תקבל משימה מעל הרמה הזו.
                 </p>
             </div>
