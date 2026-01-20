@@ -49,12 +49,13 @@ function GameController() {
   // --- Logic for Group Shot Button ---
   const showShotButton = useMemo(() => {
       // הכפתור רלוונטי רק אם יש 3 שחקנים ומעלה
-      return allPlayers.length >= 3;
-  }, [allPlayers.length]);
+      return allPlayers && allPlayers.length >= 3;
+  }, [allPlayers]);
 
   const enableShotButton = useMemo(() => {
-      if (allPlayers.length === 0) return false;
+      if (!allPlayers || allPlayers.length === 0) return false;
       const adultsCount = allPlayers.filter(p => p.is_adult).length;
+      // נדרש שיותר מ-50% מהשחקנים יהיו מעל גיל 18
       return (adultsCount / allPlayers.length) > 0.5;
   }, [allPlayers]);
 
@@ -102,8 +103,34 @@ function GameController() {
       };
   }, [validPenalties, penaltyIndex, victimGender]);
 
-  
   // --- Render Functions ---
+
+  // Reusable Group Shot Button Component
+  const GroupShotButton = () => (
+      <div className="mt-3 w-full">
+          <button 
+            onClick={() => sendVote("vote_shot")} 
+            disabled={!enableShotButton || hasVoted}
+            className={`
+                w-full p-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors
+                ${enableShotButton && !hasVoted
+                    ? "bg-orange-600/80 active:scale-95 hover:bg-orange-500 text-white" 
+                    : "bg-gray-700/50 text-gray-500 cursor-not-allowed grayscale"}
+            `}
+          >
+            <Beer size={18} /> כולם שותים!
+          </button>
+          {enableShotButton ? (
+              <p className="text-[10px] text-orange-300/80 text-center mt-1 italic">
+                  מי שחוקי מרים, מי שלא - מדמיין 🧃
+              </p>
+          ) : (
+              <p className="text-[10px] text-gray-500 text-center mt-1">
+                  זמין רק כשרוב השחקנים 18+
+              </p>
+          )}
+      </div>
+  );
 
   if (!hostId) {
     return (
@@ -349,6 +376,9 @@ function GameController() {
                         <XCircle size={20} /> {t("אני מוותר (עונש!)", "אני מוותרת (עונש!)")}
                       </button>
                       <p className="text-center text-[10px] text-gray-500 mt-2">לחיצה תעביר את ההחלטה למחזיק בשרביט</p>
+                      
+                      {/* Active Player can also trigger group shot if valid */}
+                      {showShotButton && <GroupShotButton />}
                   </div>
                 </motion.div>
               )}
@@ -369,31 +399,7 @@ function GameController() {
                     <button onClick={() => sendVote("vote_dislike")} className="bg-red-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-red-500 transition-colors">👎</button>
                   </div>
                   
-                  {showShotButton && (
-                      <div className="mt-3">
-                          <button 
-                            onClick={() => sendVote("vote_shot")} 
-                            disabled={!enableShotButton}
-                            className={`
-                                w-full p-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors
-                                ${enableShotButton 
-                                    ? "bg-orange-600/80 active:scale-95 hover:bg-orange-500 text-white" 
-                                    : "bg-gray-700/50 text-gray-500 cursor-not-allowed grayscale"}
-                            `}
-                          >
-                            <Beer size={18} /> כולם שותים!
-                          </button>
-                          {enableShotButton ? (
-                              <p className="text-[10px] text-orange-300/80 text-center mt-1 italic">
-                                  מי שחוקי מרים, מי שלא - מדמיין 🧃
-                              </p>
-                          ) : (
-                              <p className="text-[10px] text-gray-500 text-center mt-1">
-                                  זמין רק כשרוב השחקנים 18+
-                              </p>
-                          )}
-                      </div>
-                  )}
+                  {showShotButton && <GroupShotButton />}
                 </div>
               )}
 
@@ -449,9 +455,11 @@ function GameController() {
     );
   }
 
+  // 3. Registration View code remains same as before (omitted for brevity in this section as it is part of the full file)
   return (
     <div className="min-h-[100dvh] bg-black text-white p-6 flex flex-col items-center justify-center text-center" dir="rtl">
-        {/* קוד הרשמה נשאר ללא שינוי, השארתי את הקומפוננטה המלאה למעלה */}
+        {/* ... registration form ... */}
+        {/* Repeating the Registration form fully here to ensure the full file is complete */}
         <div className="w-full max-w-sm space-y-6">
         <div className="flex justify-center">
           <div className="text-[10px] px-2 py-1 bg-white/5 text-gray-300 rounded-full border border-white/10">
