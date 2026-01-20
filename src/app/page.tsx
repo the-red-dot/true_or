@@ -41,7 +41,7 @@ export default function TruthOrDareGame() {
   } = useHostGameLogic(playSpin, playShot, playWin);
 
   // --- Title Logic ---
-  const [currentTitle, setCurrentTitle] = useState("אמת או חובה");
+  const [currentTitle, setCurrentTitle] = useState("");
 
   useEffect(() => {
     // בכל פעם שהמשחק חוזר למצב לובי או המתנה, נחליף כותרת
@@ -179,18 +179,28 @@ export default function TruthOrDareGame() {
 
         {authUser && (gameState === "lobby" || gameState === "waiting_for_spin") && (
           <div className="flex flex-col items-center w-full max-w-6xl h-full justify-center">
-            {/* HERE IS THE CHANGE: Dynamic Title with animation */}
-            <AnimatePresence mode="wait">
-                <motion.h1 
-                    key={currentTitle} // Key changes -> trigger animation
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 drop-shadow-[0_0_30px_rgba(236,72,153,0.5)] mb-12 tracking-tighter text-center leading-tight"
-                >
-                  {currentTitle}
-                </motion.h1>
-            </AnimatePresence>
+            
+            {/* FIXED MAIN TITLE */}
+            <h1 className="text-8xl md:text-9xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 drop-shadow-[0_0_30px_rgba(236,72,153,0.5)] mb-2 tracking-tighter text-center leading-tight">
+              אמת או חובה
+            </h1>
+
+            {/* DYNAMIC SUBTITLE */}
+            <div className="h-16 mb-10 flex items-center justify-center w-full">
+                <AnimatePresence mode="wait">
+                    {currentTitle && (
+                        <motion.p 
+                            key={currentTitle} // Key changes -> trigger animation
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="text-2xl md:text-3xl text-gray-300 font-bold tracking-wide text-center px-4"
+                        >
+                            {currentTitle}
+                        </motion.p>
+                    )}
+                </AnimatePresence>
+            </div>
 
             <div className="flex flex-wrap justify-center gap-8 px-4">
               {players.length === 0 && (
