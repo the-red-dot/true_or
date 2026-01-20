@@ -29,7 +29,9 @@ function GameController() {
     localHeat,
     myPlayerId,
     victimIsAdult,
-    victimGender, // מגדר הקורבן (זה שוויתר)
+    victimGender, 
+    allPlayers, // רשימת כל השחקנים
+    hasVoted, // האם המשתמש כבר הצביע
     handleJoin,
     handleLeaveGame,
     handleSpin,
@@ -43,6 +45,18 @@ function GameController() {
 
   // State for carousel
   const [penaltyIndex, setPenaltyIndex] = useState(0);
+
+  // --- Logic for Group Shot Button ---
+  const showShotButton = useMemo(() => {
+      // הכפתור רלוונטי רק אם יש 3 שחקנים ומעלה
+      return allPlayers.length >= 3;
+  }, [allPlayers.length]);
+
+  const enableShotButton = useMemo(() => {
+      if (allPlayers.length === 0) return false;
+      const adultsCount = allPlayers.filter(p => p.is_adult).length;
+      return (adultsCount / allPlayers.length) > 0.5;
+  }, [allPlayers]);
 
   // --- Helpers for Icons (Copied for consistency on mobile) ---
   const renderPenaltyIcon = (type: string | undefined) => {
@@ -65,14 +79,10 @@ function GameController() {
       }
   };
 
-  // --- Gender Helper for UI Texts ---
-  // משתמש במגדר של השחקן הנוכחי (זה שמחזיק במכשיר)
   const t = (male: string, female: string) => {
       return gender === 'female' ? female : male;
   }
 
-  // --- Filter Penalties ---
-  // מסנן עונשים לפי גיל הקורבן (לא גיל המחזיק בשרביט)
   const validPenalties = useMemo(() => {
       return PENALTIES_LIST.filter(p => {
           if (p.is18 && !victimIsAdult) return false;
@@ -80,14 +90,10 @@ function GameController() {
       });
   }, [victimIsAdult]);
 
-  // --- Get Current Penalty Data ---
-  // שולף את הטקסט והתיאור המתאימים למגדר של הקורבן
   const currentPenaltyData = useMemo(() => {
       if (validPenalties.length === 0) return null;
-      // וודא שהאינדקס תקין (במקרה שהרשימה הצטמצמה)
       const safeIndex = penaltyIndex % validPenalties.length; 
       const p = validPenalties[safeIndex];
-      // ברירת מחדל לזכר אם אין מגדר או משהו השתבש
       const g = victimGender === 'female' ? 'female' : 'male';
       return {
           type: p.type,
@@ -99,7 +105,6 @@ function GameController() {
   
   // --- Render Functions ---
 
-  // 1. Error State
   if (!hostId) {
     return (
       <div className="text-white p-10 text-center flex flex-col items-center justify-center h-screen bg-black" dir="rtl">
@@ -111,7 +116,6 @@ function GameController() {
 
   const isAnonymous = (authUser as any)?.is_anonymous === true;
 
-  // 2. Controller View (Active Game)
   if (isSubmitted && myPlayerId && gameState) {
     const isMyTurnToPlay = gameState.current_player_id === myPlayerId;
     const isController = gameState.last_active_player_id === myPlayerId;
@@ -122,7 +126,6 @@ function GameController() {
     const isWaitingForChoice = gameState.status === "waiting_for_choice";
     const isChoosingPenalty = gameState.status === "choosing_penalty" && isController;
 
-    // --- Carousel Handlers ---
     const nextPenalty = () => {
         const next = (penaltyIndex + 1) % validPenalties.length;
         setPenaltyIndex(next);
@@ -151,7 +154,6 @@ function GameController() {
 
     const confirmPenalty = () => {
         if (!currentPenaltyData) return;
-        // שולחים את העונש הנבחר עם הטקסט המותאם מגדרית
         sendPenaltySelection(currentPenaltyData);
     }
 
@@ -196,7 +198,6 @@ function GameController() {
                   </span>
                 </div>
                 
-                {/* Custom Fire Buttons Selector */}
                 <div className="flex gap-2 justify-between mb-2">
                     {[1, 2, 3].map((level) => (
                         <button
@@ -237,11 +238,9 @@ function GameController() {
               <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full text-center">
                   <div className="mb-4">
                       <Gavel className="mx-auto text-purple-500 mb-2" size={40} />
-                      {/* תיקון מגדרי מלא לקורבן */}
                       <h2 className="text-2xl font-black text-white">
                           {victimGender === 'female' ? "היא ויתרה!" : "הוא ויתר!"}
                       </h2>
-                      {/* תיקון מגדרי מלא לבוחר/ת ולקורבן */}
                       <p className="text-gray-300 text-sm">
                           {gender === 'female' ? "בחרי" : "בחר"} {victimGender === 'female' ? "לה" : "לו"} עונש מהרשימה
                       </p>
@@ -315,7 +314,6 @@ function GameController() {
               {isMyTurnToPlay && gameState.status === "challenge" && (
                 <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full">
                   
-                  {/* הכרטיס המלא שמוצג לשחקן בנייד */}
                   <div className="bg-gray-800/90 p-6 rounded-3xl border-2 border-pink-500 shadow-2xl mb-4 text-center relative overflow-hidden">
                       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500 to-cyan-500" />
                       
@@ -357,22 +355,51 @@ function GameController() {
 
               {/* Spectator View */}
               {!isMyTurnToPlay && gameState.status === "challenge" && (
-                <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-700">
+                <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-700 relative">
+                  {/* כיסוי כשכבר הצבעת */}
+                  {hasVoted && (
+                      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] z-10 flex items-center justify-center rounded-2xl">
+                          <span className="text-white font-bold bg-black/50 px-4 py-2 rounded-full border border-white/20">הצבעתך נקלטה! ✅</span>
+                      </div>
+                  )}
+
                   <h3 className="text-center font-bold mb-4 text-gray-300">מה דעתך על הביצוע?</h3>
                   <div className="grid grid-cols-2 gap-3">
                     <button onClick={() => sendVote("vote_like")} className="bg-green-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-green-500 transition-colors">👍</button>
                     <button onClick={() => sendVote("vote_dislike")} className="bg-red-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-red-500 transition-colors">👎</button>
                   </div>
-                  <button onClick={() => sendVote("vote_shot")} className="w-full mt-3 bg-orange-600/80 p-3 rounded-xl font-bold flex justify-center items-center gap-2 active:scale-95 hover:bg-orange-500 transition-colors">
-                    <Beer size={18} /> כולם שותים!
-                  </button>
+                  
+                  {showShotButton && (
+                      <div className="mt-3">
+                          <button 
+                            onClick={() => sendVote("vote_shot")} 
+                            disabled={!enableShotButton}
+                            className={`
+                                w-full p-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors
+                                ${enableShotButton 
+                                    ? "bg-orange-600/80 active:scale-95 hover:bg-orange-500 text-white" 
+                                    : "bg-gray-700/50 text-gray-500 cursor-not-allowed grayscale"}
+                            `}
+                          >
+                            <Beer size={18} /> כולם שותים!
+                          </button>
+                          {enableShotButton ? (
+                              <p className="text-[10px] text-orange-300/80 text-center mt-1 italic">
+                                  מי שחוקי מרים, מי שלא - מדמיין 🧃
+                              </p>
+                          ) : (
+                              <p className="text-[10px] text-gray-500 text-center mt-1">
+                                  זמין רק כשרוב השחקנים 18+
+                              </p>
+                          )}
+                      </div>
+                  )}
                 </div>
               )}
 
               {/* Status Texts */}
               {gameState.status !== "challenge" && (
                 <div className="text-center text-gray-400 animate-pulse">
-                  {/* Bottle animation inside text status instead of dice */}
                   {gameState.status === "spinning" && <div className="text-6xl animate-spin mb-4">🍾</div>}
                   {gameState.status === "choosing_penalty" && <div className="text-6xl mb-4 animate-bounce">⚖️</div>}
                   {gameState.status === "penalty" && <div className="text-6xl mb-4">⚠️</div>}
@@ -400,7 +427,6 @@ function GameController() {
           )}
         </div>
 
-        {/* Emoji Bar (מוסתר אם בוחרים עונש) */}
         {!isChoosingPenalty && (
             <div className="w-full pt-3 pb-6 bg-gray-900 border-t border-gray-800 z-10">
             <p className="text-center text-[10px] text-gray-500 mb-2 font-bold uppercase tracking-widest">תגובה מהירה</p>
@@ -423,10 +449,10 @@ function GameController() {
     );
   }
 
-  // 3. Registration View
   return (
     <div className="min-h-[100dvh] bg-black text-white p-6 flex flex-col items-center justify-center text-center" dir="rtl">
-      <div className="w-full max-w-sm space-y-6">
+        {/* קוד הרשמה נשאר ללא שינוי, השארתי את הקומפוננטה המלאה למעלה */}
+        <div className="w-full max-w-sm space-y-6">
         <div className="flex justify-center">
           <div className="text-[10px] px-2 py-1 bg-white/5 text-gray-300 rounded-full border border-white/10">
             {authReady ? (isAnonymous ? "סטטוס: מחובר כאנונימי" : "סטטוס: מחובר") : "מאתחל התחברות..."}
@@ -460,7 +486,6 @@ function GameController() {
           ))}
         </div>
 
-        {/* Safety Settings Card - החדש! */}
         <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700 w-full text-right">
             <div className="flex items-center gap-2 mb-4 text-gray-300 border-b border-gray-700 pb-2">
                 <ShieldCheck size={18} className="text-green-400" />
@@ -483,7 +508,6 @@ function GameController() {
                     <span>{personalMaxHeat <= 2 ? "בטוח" : "נועז"}</span>
                 </div>
                 
-                {/* Custom Fire Buttons Selector for Registration */}
                 <div className="flex gap-2 justify-between mb-2 mt-2">
                     {[1, 2, 3].map((level) => (
                         <button

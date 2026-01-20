@@ -20,7 +20,7 @@ export type PlayerRow = {
   host_id: string;
   user_id: string;
   name: string;
-  gender: "male" | "female"; // הוסר "other"
+  gender: "male" | "female"; 
   avatar: string;
   is_active: boolean | null;
   session_id: string | null;
@@ -132,9 +132,13 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   const [gameState, setGameState] = useState<GameStateRow | null>(null);
   const [localHeat, setLocalHeat] = useState(1);
   
-  // Victim info (for controller to know if victim is 18+ and gender)
+  // Victim info
   const [victimIsAdult, setVictimIsAdult] = useState<boolean>(false);
   const [victimGender, setVictimGender] = useState<"male" | "female">("male");
+
+  // Local Vote Tracking
+  const [hasVoted, setHasVoted] = useState(false);
+  const [allPlayers, setAllPlayers] = useState<PlayerRow[]>([]); // New: Track all players for 18+ calc
 
   // Refs
   const myPlayerIdRef = useRef<string | null>(null);
@@ -157,6 +161,14 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       setPersonalMaxHeat(2);
     }
   }, [isAdult, personalMaxHeat]);
+
+  // איפוס הצבעה כשסטטוס המשחק משתנה
+  useEffect(() => {
+      if (gameState?.status !== 'challenge') {
+          setHasVoted(false);
+          voteLockRef.current = false;
+      }
+  }, [gameState?.status]);
 
   // --- Helpers ---
   const handleKicked = (opts?: { keepInputs?: boolean }) => {
@@ -265,7 +277,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
           setGameState(next);
           setLocalHeat(next.heat_level ?? 1);
 
-          // אם יש שחקן פעיל (קורבן) חדש, נבדוק את פרטיו (גיל ומגדר)
           if (next.current_player_id) {
              const { data } = await supabase
                 .from('players')
@@ -292,32 +303,42 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       )
       .subscribe();
 
+    // -- Updated Players Listener to track ALL players for statistics --
     const playersChannel = supabase
       .channel(`players_listener_${hostId}`)
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
-        (payload) => {
-          const next = payload.new as PlayerRow;
-          const myUid = myUserIdRef.current;
-          if (!myUid) return;
-          if (next.user_id === myUid) {
-            const curSession = sessionIdRef.current;
-            const isWrongSession = curSession && next.session_id !== curSession;
-            const isInactive = next.is_active === false;
-            if (isWrongSession || isInactive) handleKicked({ keepInputs: true });
-          }
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "DELETE", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
-        (payload) => {
-          const deletedId = (payload.old as any)?.id;
-          if (deletedId && deletedId === myPlayerIdRef.current) handleKicked({ keepInputs: true });
+        { event: "*", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
+        async () => {
+            // רענון רשימת השחקנים המלאה בכל שינוי
+            // זה פשוט יותר מניהול דלתא
+            const { data } = await supabase
+                .from("players")
+                .select("*")
+                .eq("host_id", hostId)
+                .eq("is_active", true); // רק פעילים
+            
+            if (data) {
+                setAllPlayers(data as PlayerRow[]);
+                
+                // בדיקה אם הועפתי
+                const myUid = myUserIdRef.current;
+                const me = data.find(p => p.user_id === myUid);
+                
+                if (myPlayerIdRef.current && !me) {
+                    handleKicked({ keepInputs: true });
+                } else if (me && sessionIdRef.current && me.session_id !== sessionIdRef.current) {
+                    handleKicked({ keepInputs: true });
+                }
+            }
         }
       )
       .subscribe();
+      
+      // טעינה ראשונית של שחקנים
+      supabase.from("players").select("*").eq("host_id", hostId).eq("is_active", true).then(({data}) => {
+          if (data) setAllPlayers(data as PlayerRow[]);
+      });
 
     return () => {
       if (heatDebounceRef.current) {
@@ -467,8 +488,11 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   };
 
   const sendVote = (type: "vote_like" | "vote_dislike" | "vote_shot" | "action_skip") => {
-    if (voteLockRef.current) return;
+    if (voteLockRef.current || hasVoted) return; // Prevent double vote
+    
     voteLockRef.current = true;
+    if (type !== 'action_skip') setHasVoted(true); // עונש עצמי (skip) לא נועל את הממשק כמו הצבעה רגילה
+    
     void sendAction(type);
     window.setTimeout(() => { voteLockRef.current = false; }, 600);
   };
@@ -492,7 +516,9 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     isAdult, setIsAdult,
     personalMaxHeat, setPersonalMaxHeat,
     isSubmitted, loading, authReady, authUser, gameState, localHeat, myPlayerId,
-    victimIsAdult, victimGender, // חשוב לשימוש בקומפוננטה
+    victimIsAdult, victimGender,
+    allPlayers, // חשיפת כלל השחקנים לצורך חישוב סטטיסטיקות
+    hasVoted, // חשיפת הסטטוס אם הצביע
     handleJoin, handleLeaveGame, handleSpin, handleHeatChange, sendEmoji, sendVote, sendChoice,
     sendPenaltyPreview, sendPenaltySelection
   };

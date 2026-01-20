@@ -28,7 +28,6 @@ export type Challenge = {
 
 export type Reaction = { id: string; emoji: string; playerId: string; x: number };
 
-// עדכון טיפוס העונש כדי לכלול את כל הסוגים החדשים
 export type Penalty = {
     id?: string;
     type: 'shot' | 'lemon' | 'vinegar' | 'onion' | 'garlic' | 'water' | 'ice' | 'kiss_wall' | 'squats' | 'tea_bag' | 'pasta' | 'lipstick' | 'oil' | 'chili';
@@ -68,6 +67,9 @@ export const useHostGameLogic = (
     dislikes: 0,
     shots: 0,
   });
+  
+  // מעקב אחרי שחקנים שכבר הצביעו בסיבוב הנוכחי למניעת כפילויות
+  const [votedPlayers, setVotedPlayers] = useState<Set<string>>(new Set());
   const [shotVoteMode, setShotVoteMode] = useState(false);
 
   // --- Helpers ---
@@ -80,6 +82,7 @@ export const useHostGameLogic = (
 
   const resetVotes = () => {
     setVotes({ likes: 0, dislikes: 0, shots: 0 });
+    setVotedPlayers(new Set()); // איפוס המצביעים
     setShotVoteMode(false);
   };
 
@@ -96,6 +99,8 @@ export const useHostGameLogic = (
     challengeType,
     currentChallenge,
     authUser,
+    votes, // הוספת votes לרף
+    votedPlayers // הוספת votedPlayers לרף
   });
 
   useEffect(() => {
@@ -110,6 +115,8 @@ export const useHostGameLogic = (
       challengeType,
       currentChallenge,
       authUser,
+      votes,
+      votedPlayers
     };
   }, [
     players,
@@ -122,6 +129,8 @@ export const useHostGameLogic = (
     challengeType,
     currentChallenge,
     authUser,
+    votes,
+    votedPlayers
   ]);
 
   const syncGameStateToDB = async (args: {
@@ -366,14 +375,12 @@ export const useHostGameLogic = (
       const freshPlayers = stateRef.current.players;
       if (freshPlayers.length === 0) return setGameState("lobby");
 
-      // --- LOGIC CHANGE: Filter out the current controller ---
       // השחקן שמחזיק בשרביט לא יכול להיבחר
       let candidates = freshPlayers;
       if (controller) {
           candidates = freshPlayers.filter(p => p.id !== controller.id);
       }
       
-      // Fallback: If only 1 player total (testing) or error, fallback to any player
       if (candidates.length === 0) candidates = freshPlayers;
 
       const randomPlayer = candidates[Math.floor(Math.random() * candidates.length)];
@@ -385,6 +392,7 @@ export const useHostGameLogic = (
   const handleGameEvent = (data: any) => {
     const { type, payload, playerId } = data;
     const gs = stateRef.current.gameState;
+    const { votedPlayers } = stateRef.current;
 
     if (type === "emoji") {
       const id = Math.random().toString(36);
@@ -439,6 +447,14 @@ export const useHostGameLogic = (
       return;
     }
 
+    // --- Voting Logic with Double-Vote Prevention ---
+    
+    // אם השחקן כבר הצביע בסיבוב הזה, מתעלמים
+    if (votedPlayers.has(playerId)) return;
+
+    // הוספת השחקן לרשימת המצביעים
+    setVotedPlayers(prev => new Set(prev).add(playerId));
+
     if (type === "vote_like") {
       setVotes((v) => ({ ...v, likes: v.likes + 1 }));
       return;
@@ -450,13 +466,24 @@ export const useHostGameLogic = (
     }
 
     if (type === "vote_shot") {
-      setVotes((v) => {
-        const newShots = v.shots + 1;
-        const threshold = Math.max(2, Math.floor(stateRef.current.players.length / 2));
-        if (newShots >= threshold && !stateRef.current.shotVoteMode) triggerGroupShot();
-        return { ...v, shots: newShots };
-      });
-      return;
+        // רלוונטי רק אם יש 3 שחקנים או יותר
+        if (stateRef.current.players.length < 3) return;
+
+        setVotes((v) => {
+            const newShots = v.shots + 1;
+            // רוב מוחלט נדרש (יותר מ-50% מהשחקנים, לא כולל המבצע עצמו? 
+            // הפתרון הפשוט: יותר מחצי מכלל השחקנים בחדר פחות 1 (המבצע))
+            // אבל כאן הבקשה היא "2 לחצו... מתוך 3". זה רוב רגיל מתוך המצביעים הפוטנציאלים.
+            
+            const potentialVoters = Math.max(1, stateRef.current.players.length - 1); // כולם חוץ מהמבצע
+            const threshold = Math.floor(potentialVoters / 2) + 1; // רוב מוחלט
+
+            if (newShots >= threshold && !stateRef.current.shotVoteMode) {
+                triggerGroupShot();
+            }
+            return { ...v, shots: newShots };
+        });
+        return;
     }
   };
 
@@ -605,13 +632,32 @@ export const useHostGameLogic = (
     }
   }, [authUser]);
 
+  // --- לוגיקת הכרעה מעודכנת ---
   useEffect(() => {
     if (gameState !== "challenge") return;
     if (roundEndLockRef.current) return;
 
     const voters = Math.max(1, players.length - 1);
-    if (votes.likes > voters * 0.5) handleDone();
-    else if (votes.dislikes > voters * 0.5) handleSkip();
+    
+    // מנצח: תיקו או יותר לייקים
+    // נכשל: רק אם יש רוב מובהק של דיסלייקים (יותר מחצי מהמצביעים הפוטנציאלים)
+    
+    // כדי למנוע סיום מוקדם מדי כשיש רק הצבעה אחת, נחכה לרוב מוחלט גם בלייקים
+    // או שפשוט נחכה שסך ההצבעות יעבור סף מסוים?
+    // נלך לפי ההנחיה: "2 דיסלייק ו-1 לייק -> נכשל". "תיקו -> עבר".
+    // זה אומר שאנחנו צריכים לחכות שסך ההצבעות יגיע למספר המצביעים? לא בהכרח, המשחק זורם.
+    // נעשה כמו קודם: אם הדיסלייקים עברו את החצי -> נכשל בטוח.
+    // אם הלייקים + החצי עברו את החצי?
+    // בוא נעשה את זה פשוט: אם רוב המצביעים הפוטנציאלים הצביעו נגד -> נכשל.
+    // אם רוב המצביעים הפוטנציאלים הצביעו בעד (או תיקו בטוח שלא ישתנה) -> עבר.
+    
+    if (votes.dislikes > voters / 2) {
+        handleSkip(); // נכשל
+    } else if (votes.likes >= voters / 2) {
+        // בתיקו אנחנו מעבירים, אז אם יש חצי לייקים זה כבר טוב (כי המקסימום דיסלייק יהיה חצי -> תיקו -> עובר)
+        handleDone(); // עבר
+    }
+    
   }, [votes, players.length, gameState]);
 
   useEffect(() => {
