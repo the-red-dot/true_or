@@ -1,7 +1,7 @@
 // src/app/page.tsx
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Flame, Trash2, LogOut, User as UserIcon, WifiOff, RefreshCw,
@@ -13,6 +13,7 @@ import Link from "next/link";
 
 import { useHostGameLogic } from "@/app/hooks/useHostGameLogic";
 import { useGameSounds } from "@/app/hooks/useGameSounds";
+import { FUNNY_TITLES } from "@/app/lib/funnyTitles"; // Import the list
 
 export default function TruthOrDareGame() {
   const { playSpin, playShot, playWin } = useGameSounds();
@@ -38,6 +39,17 @@ export default function TruthOrDareGame() {
     handleLogout,
     endGame
   } = useHostGameLogic(playSpin, playShot, playWin);
+
+  // --- Title Logic ---
+  const [currentTitle, setCurrentTitle] = useState("אמת או חובה");
+
+  useEffect(() => {
+    // בכל פעם שהמשחק חוזר למצב לובי או המתנה, נחליף כותרת
+    if (gameState === "lobby" || gameState === "waiting_for_spin") {
+      const randomIndex = Math.floor(Math.random() * FUNNY_TITLES.length);
+      setCurrentTitle(FUNNY_TITLES[randomIndex]);
+    }
+  }, [gameState]); // תלות בסטטוס המשחק
 
   // --- Helper Functions for Penalty UI ---
   const renderPenaltyIcon = (type: string | undefined) => {
@@ -167,9 +179,18 @@ export default function TruthOrDareGame() {
 
         {authUser && (gameState === "lobby" || gameState === "waiting_for_spin") && (
           <div className="flex flex-col items-center w-full max-w-6xl h-full justify-center">
-            <h1 className="text-8xl md:text-9xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 drop-shadow-[0_0_30px_rgba(236,72,153,0.5)] mb-12 tracking-tighter">
-              {gameState === "lobby" ? "אמת או חובה" : "הבא בתור..."}
-            </h1>
+            {/* HERE IS THE CHANGE: Dynamic Title with animation */}
+            <AnimatePresence mode="wait">
+                <motion.h1 
+                    key={currentTitle} // Key changes -> trigger animation
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 drop-shadow-[0_0_30px_rgba(236,72,153,0.5)] mb-12 tracking-tighter text-center leading-tight"
+                >
+                  {currentTitle}
+                </motion.h1>
+            </AnimatePresence>
 
             <div className="flex flex-wrap justify-center gap-8 px-4">
               {players.length === 0 && (
