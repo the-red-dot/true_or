@@ -62,15 +62,13 @@ export const useHostGameLogic = (
   const [sessionId, setSessionId] = useState<string | null>(null);
 
   const [reactions, setReactions] = useState<Reaction[]>([]);
-  const [votes, setVotes] = useState<{ likes: number; dislikes: number; shots: number }>({
+  const [votes, setVotes] = useState<{ likes: number; dislikes: number }>({
     likes: 0,
     dislikes: 0,
-    shots: 0,
   });
   
   // מעקב אחרי שחקנים שכבר הצביעו בסיבוב הנוכחי למניעת כפילויות
   const [votedPlayers, setVotedPlayers] = useState<Set<string>>(new Set());
-  const [shotVoteMode, setShotVoteMode] = useState(false);
 
   // --- Helpers ---
   const genSessionId = () => {
@@ -81,9 +79,8 @@ export const useHostGameLogic = (
   };
 
   const resetVotes = () => {
-    setVotes({ likes: 0, dislikes: 0, shots: 0 });
+    setVotes({ likes: 0, dislikes: 0 });
     setVotedPlayers(new Set()); // איפוס המצביעים
-    setShotVoteMode(false);
   };
 
   const roundEndLockRef = useRef(false);
@@ -94,7 +91,6 @@ export const useHostGameLogic = (
     gameState,
     sessionId,
     selectedPlayer,
-    shotVoteMode,
     heatLevel,
     challengeType,
     currentChallenge,
@@ -110,7 +106,6 @@ export const useHostGameLogic = (
       gameState,
       sessionId,
       selectedPlayer,
-      shotVoteMode,
       heatLevel,
       challengeType,
       currentChallenge,
@@ -124,7 +119,6 @@ export const useHostGameLogic = (
     gameState,
     sessionId,
     selectedPlayer,
-    shotVoteMode,
     heatLevel,
     challengeType,
     currentChallenge,
@@ -300,20 +294,6 @@ export const useHostGameLogic = (
     }
   };
 
-  const triggerGroupShot = () => {
-    if (roundEndLockRef.current) return;
-    roundEndLockRef.current = true;
-
-    setShotVoteMode(true);
-    playShotSound();
-
-    setTimeout(() => {
-      setShotVoteMode(false);
-      setGameState("waiting_for_spin");
-      setSelectedPlayer(null);
-    }, 5000);
-  };
-
   const handleDone = () => {
     if (roundEndLockRef.current) return;
     roundEndLockRef.current = true;
@@ -463,27 +443,6 @@ export const useHostGameLogic = (
     if (type === "vote_dislike") {
       setVotes((v) => ({ ...v, dislikes: v.dislikes + 1 }));
       return;
-    }
-
-    if (type === "vote_shot") {
-        // עדכון: הורדת הרף ל-2 שחקנים כדי לאפשר קבלת הצבעה גם בקבוצות קטנות
-        if (stateRef.current.players.length < 2) return;
-
-        setVotes((v) => {
-            const newShots = v.shots + 1;
-            // רוב מוחלט נדרש (יותר מ-50% מהשחקנים, לא כולל המבצע עצמו? 
-            // הפתרון הפשוט: יותר מחצי מכלל השחקנים בחדר פחות 1 (המבצע))
-            // אבל כאן הבקשה היא "2 לחצו... מתוך 3". זה רוב רגיל מתוך המצביעים הפוטנציאלים.
-            
-            const potentialVoters = Math.max(1, stateRef.current.players.length - 1); // כולם חוץ מהמבצע
-            const threshold = Math.floor(potentialVoters / 2) + 1; // רוב מוחלט
-
-            if (newShots >= threshold && !stateRef.current.shotVoteMode) {
-                triggerGroupShot();
-            }
-            return { ...v, shots: newShots };
-        });
-        return;
     }
   };
 
@@ -738,7 +697,6 @@ export const useHostGameLogic = (
     isConnected,
     reactions,
     votes,
-    shotVoteMode,
     currentPenalty,
     previewPenalty,
     setHeatLevel,
@@ -746,6 +704,5 @@ export const useHostGameLogic = (
     handleManualRefresh,
     handleLogout,
     endGame,
-    triggerGroupShot, // הוספנו את הפונקציה הזו כדי שיהיה אפשר להפעיל אותה מה-UI
   };
 };

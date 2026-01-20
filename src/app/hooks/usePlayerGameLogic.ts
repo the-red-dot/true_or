@@ -487,7 +487,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     void sendAction("emoji", icon);
   };
 
-  const sendVote = (type: "vote_like" | "vote_dislike" | "vote_shot" | "action_skip") => {
+  const sendVote = (type: "vote_like" | "vote_dislike" | "action_skip") => {
     if (voteLockRef.current || hasVoted) return; // Prevent double vote
     
     voteLockRef.current = true;

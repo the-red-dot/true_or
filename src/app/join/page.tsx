@@ -5,7 +5,7 @@ import React, { Suspense, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, LogOut,
-  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft
+  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft, Sparkles
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { usePlayerGameLogic, PENALTIES_LIST } from "@/app/hooks/usePlayerGameLogic";
@@ -45,18 +45,6 @@ function GameController() {
 
   // State for carousel
   const [penaltyIndex, setPenaltyIndex] = useState(0);
-
-  // --- Logic for Group Shot Button ---
-  const showShotButton = useMemo(() => {
-      // עדכון: מציג את הכפתור אם יש לפחות 2 שחקנים (במקום 3) כדי להקל על בדיקות ומשחקים קטנים
-      return allPlayers.length >= 2;
-  }, [allPlayers.length]);
-
-  const enableShotButton = useMemo(() => {
-      if (allPlayers.length === 0) return false;
-      const adultsCount = allPlayers.filter(p => p.is_adult).length;
-      return (adultsCount / allPlayers.length) > 0.5;
-  }, [allPlayers]);
 
   // --- Helpers for Icons (Copied for consistency on mobile) ---
   const renderPenaltyIcon = (type: string | undefined) => {
@@ -368,32 +356,6 @@ function GameController() {
                     <button onClick={() => sendVote("vote_like")} className="bg-green-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-green-500 transition-colors">👍</button>
                     <button onClick={() => sendVote("vote_dislike")} className="bg-red-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-red-500 transition-colors">👎</button>
                   </div>
-                  
-                  {showShotButton && (
-                      <div className="mt-3">
-                          <button 
-                            onClick={() => sendVote("vote_shot")} 
-                            disabled={!enableShotButton}
-                            className={`
-                                w-full p-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors
-                                ${enableShotButton 
-                                    ? "bg-orange-600/80 active:scale-95 hover:bg-orange-500 text-white" 
-                                    : "bg-gray-700/50 text-gray-500 cursor-not-allowed grayscale"}
-                            `}
-                          >
-                            <Beer size={18} /> הפסקת שוט!
-                          </button>
-                          {enableShotButton ? (
-                              <p className="text-[10px] text-orange-300/80 text-center mt-1 italic">
-                                  מי שחוקי מרים, מי שלא - מדמיין 🧃
-                              </p>
-                          ) : (
-                              <p className="text-[10px] text-gray-500 text-center mt-1">
-                                  זמין רק כשרוב השחקנים 18+
-                              </p>
-                          )}
-                      </div>
-                  )}
                 </div>
               )}
 
@@ -451,7 +413,7 @@ function GameController() {
 
   return (
     <div className="min-h-[100dvh] bg-black text-white p-6 flex flex-col items-center justify-center text-center" dir="rtl">
-        {/* קוד הרשמה נשאר ללא שינוי, השארתי את הקומפוננטה המלאה למעלה */}
+        {/* קוד הרשמה נשאר ללא שינוי */}
         <div className="w-full max-w-sm space-y-6">
         <div className="flex justify-center">
           <div className="text-[10px] px-2 py-1 bg-white/5 text-gray-300 rounded-full border border-white/10">
@@ -530,8 +492,8 @@ function GameController() {
 
                 <p className="text-[10px] text-gray-500 mt-2 leading-tight">
                     {isAdult 
-                      ? "כמשתמש בוגר, באפשרותך לבחור כל רמת קושי." 
-                      : "משתמשים מתחת לגיל 18 מוגבלים לרמה 2 ומטה."}
+                    ? "כמשתמש בוגר, באפשרותך לבחור כל רמת קושי." 
+                    : "משתמשים מתחת לגיל 18 מוגבלים לרמה 2 ומטה."}
                     {" "}לעולם לא תקבל משימה מעל הרמה הזו.
                 </p>
             </div>
