@@ -269,7 +269,7 @@ export default function TruthOrDareGame() {
               className="relative z-10"
             >
               {/* Spinning Bottle Icon instead of Wheel */}
-              <Wine size={300} className="text-pink-500 drop-shadow-[0_0_50px_rgba(236,72,153,0.8)]" />
+              <div className="text-[250px]">🍾</div>
             </motion.div>
             
             <motion.div 

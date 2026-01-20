@@ -4,8 +4,8 @@
 import React, { Suspense, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
-  Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, RefreshCw, LogOut,
-  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft, Wine
+  Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, LogOut,
+  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { usePlayerGameLogic, PENALTIES_LIST } from "@/app/hooks/usePlayerGameLogic";
@@ -126,9 +126,6 @@ function GameController() {
     const nextPenalty = () => {
         const next = (penaltyIndex + 1) % validPenalties.length;
         setPenaltyIndex(next);
-        // שולחים לטלוויזיה את האובייקט הגולמי, הטלוויזיה תציג אייקון וטקסט.
-        // אבל הטלוויזיה לא יודעת את המגדר של הקורבן אוטומטית אם לא נשלח לה את הטקסט המעובד.
-        // הפתרון: נשלח לטלוויזיה את הטקסט והתיאור המעובדים כבר.
         const pRaw = validPenalties[next];
         const g = victimGender === 'female' ? 'female' : 'male';
         const pResolved = {
@@ -229,7 +226,7 @@ function GameController() {
                 onClick={handleSpin}
                 className="w-full py-6 bg-gradient-to-r from-pink-600 to-purple-600 rounded-3xl font-black text-3xl shadow-[0_0_30px_rgba(236,72,153,0.4)] active:scale-95 transition-transform flex items-center justify-center gap-3"
               >
-                <Wine size={32} className="text-white rotate-45" />
+                <div className="text-4xl">🍾</div>
                 {gameState.status === "lobby" ? "מתחילים!" : t("סובב את הבקבוק", "סובבי את הבקבוק")}
               </button>
             </motion.div>
@@ -240,8 +237,14 @@ function GameController() {
               <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full text-center">
                   <div className="mb-4">
                       <Gavel className="mx-auto text-purple-500 mb-2" size={40} />
-                      <h2 className="text-2xl font-black text-white">{t("הוא ויתר!", "היא ויתרה!")}</h2>
-                      <p className="text-gray-300 text-sm">{t("בחר לו", "בחרי לה")} עונש מהרשימה</p>
+                      {/* תיקון מגדרי מלא לקורבן */}
+                      <h2 className="text-2xl font-black text-white">
+                          {victimGender === 'female' ? "היא ויתרה!" : "הוא ויתר!"}
+                      </h2>
+                      {/* תיקון מגדרי מלא לבוחר/ת ולקורבן */}
+                      <p className="text-gray-300 text-sm">
+                          {gender === 'female' ? "בחרי" : "בחר"} {victimGender === 'female' ? "לה" : "לו"} עונש מהרשימה
+                      </p>
                   </div>
 
                   <div className="bg-gray-800 border-2 border-purple-500 rounded-3xl p-6 mb-6 shadow-2xl relative overflow-hidden">
@@ -369,7 +372,8 @@ function GameController() {
               {/* Status Texts */}
               {gameState.status !== "challenge" && (
                 <div className="text-center text-gray-400 animate-pulse">
-                  {gameState.status === "spinning" && <div className="text-6xl animate-spin mb-4">🎲</div>}
+                  {/* Bottle animation inside text status instead of dice */}
+                  {gameState.status === "spinning" && <div className="text-6xl animate-spin mb-4">🍾</div>}
                   {gameState.status === "choosing_penalty" && <div className="text-6xl mb-4 animate-bounce">⚖️</div>}
                   {gameState.status === "penalty" && <div className="text-6xl mb-4">⚠️</div>}
                   
