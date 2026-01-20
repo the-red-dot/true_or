@@ -746,5 +746,6 @@ export const useHostGameLogic = (
     handleManualRefresh,
     handleLogout,
     endGame,
+    triggerGroupShot, // הוספנו את הפונקציה הזו כדי שיהיה אפשר להפעיל אותה מה-UI
   };
 };

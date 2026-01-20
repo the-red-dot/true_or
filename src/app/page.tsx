@@ -37,7 +37,8 @@ export default function TruthOrDareGame() {
     spinTheWheel,
     handleManualRefresh,
     handleLogout,
-    endGame
+    endGame,
+    triggerGroupShot // פונקציה חדשה שחשפנו
   } = useHostGameLogic(playSpin, playShot, playWin);
 
   // --- Helper Functions for Penalty UI ---
@@ -234,8 +235,8 @@ export default function TruthOrDareGame() {
                         className={`
                           relative group overflow-hidden w-24 h-24 rounded-xl transition-all duration-300 flex flex-col items-center justify-center border-2
                           ${heatLevel === level 
-                              ? 'bg-gradient-to-t from-orange-600 to-yellow-500 shadow-[0_0_20px_rgba(251,191,36,0.6)] scale-110 border-yellow-300 z-10' 
-                              : 'bg-gray-800/50 hover:bg-gray-700/50 text-gray-400 border-white/10'}
+                            ? 'bg-gradient-to-t from-orange-600 to-yellow-500 shadow-[0_0_20px_rgba(251,191,36,0.6)] scale-110 border-yellow-300 z-10' 
+                            : 'bg-gray-800/50 hover:bg-gray-700/50 text-gray-400 border-white/10'}
                         `}
                       >
                           <div className="flex flex-col items-center relative z-10">
@@ -357,21 +358,21 @@ export default function TruthOrDareGame() {
                   
                   {/* Heat Meter Visualization (3 Bars) - TV Version */}
                   <div className="flex flex-col items-center gap-3 mb-8">
-                     <span className="text-gray-400 text-sm font-bold tracking-widest uppercase">
-                        {currentChallenge.spiciness === 1 ? 'קליל' : currentChallenge.spiciness === 2 ? 'נועז' : 'לוהט 18+'}
-                     </span>
-                     <div className="flex gap-2">
-                        {Array.from({ length: 3 }).map((_, i) => (
-                           <div
-                             key={i}
-                             className={`w-12 h-4 rounded-full transition-all duration-300 ${
-                               i < currentChallenge.spiciness
-                                 ? "bg-gradient-to-r from-orange-600 to-yellow-400 shadow-[0_0_15px_rgba(251,191,36,0.6)]"
-                                 : "bg-gray-700/50"
-                             }`}
-                           />
-                        ))}
-                     </div>
+                      <span className="text-gray-400 text-sm font-bold tracking-widest uppercase">
+                         {currentChallenge.spiciness === 1 ? 'קליל' : currentChallenge.spiciness === 2 ? 'נועז' : 'לוהט 18+'}
+                      </span>
+                      <div className="flex gap-2">
+                         {Array.from({ length: 3 }).map((_, i) => (
+                            <div
+                              key={i}
+                              className={`w-12 h-4 rounded-full transition-all duration-300 ${
+                                i < currentChallenge.spiciness
+                                  ? "bg-gradient-to-r from-orange-600 to-yellow-400 shadow-[0_0_15px_rgba(251,191,36,0.6)]"
+                                  : "bg-gray-700/50"
+                              }`}
+                            />
+                         ))}
+                      </div>
                   </div>
 
                   <div className="flex justify-center mb-8">
@@ -412,6 +413,16 @@ export default function TruthOrDareGame() {
                       />
                     </div>
                     <ThumbsDown className="text-red-500" />
+                  </div>
+
+                  {/* כפתור "הפסקת שוט" למארח - התוספת החדשה */}
+                  <div className="mt-8 flex justify-center">
+                      <button
+                        onClick={triggerGroupShot}
+                        className="bg-orange-600/80 hover:bg-orange-500 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95"
+                      >
+                          <Beer size={20} /> הפסקת שוט! 
+                      </button>
                   </div>
 
                   {currentChallenge.usedModel && (
@@ -521,7 +532,7 @@ export default function TruthOrDareGame() {
                 <Beer size={200} className="mb-8 text-yellow-300" />
               </motion.div>
               <h1 className="text-8xl font-black text-white border-y-8 border-white py-4">כולם שותים!</h1>
-              <p className="text-3xl mt-4 font-bold text-orange-200">הקהל אמר את דברו</p>
+              <p className="text-3xl mt-4 font-bold text-orange-200">הפסקת שוט קבוצתית 🥂</p>
             </motion.div>
           )}
         </AnimatePresence>
