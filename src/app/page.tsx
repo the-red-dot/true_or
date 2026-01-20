@@ -41,15 +41,52 @@ export default function TruthOrDareGame() {
   } = useHostGameLogic(playSpin, playShot, playWin);
 
   // --- Title Logic ---
-  const [currentTitle, setCurrentTitle] = useState("");
+  const [subtitle, setSubtitle] = useState("");
+  const [isTypingPlaceholder, setIsTypingPlaceholder] = useState(false);
 
   useEffect(() => {
-    // בכל פעם שהמשחק חוזר למצב לובי או המתנה, נחליף כותרת
+    let isCancelled = false;
+
+    const typeText = async (text: string) => {
+        // איפוס לפני הקלדה
+        setSubtitle(""); 
+        for (let i = 0; i <= text.length; i++) {
+            if (isCancelled) break;
+            setSubtitle(text.slice(0, i));
+            await new Promise(resolve => setTimeout(resolve, 50)); // מהירות הקלדה
+        }
+    };
+
+    const runTypingLoop = async () => {
+        while (!isCancelled) {
+            // שלב 1: אפקט "מקליד..."
+            setIsTypingPlaceholder(true);
+            setSubtitle("מקליד הודעה...");
+            await new Promise(resolve => setTimeout(resolve, 1500)); // השהייה של "חשיבה"
+            if (isCancelled) break;
+
+            // שלב 2: בחירת משפט והקלדתו
+            setIsTypingPlaceholder(false);
+            const randomQuote = FUNNY_TITLES[Math.floor(Math.random() * FUNNY_TITLES.length)];
+            await typeText(randomQuote);
+            if (isCancelled) break;
+
+            // שלב 3: המתנה של 10 שניות עם המשפט המלא
+            await new Promise(resolve => setTimeout(resolve, 10000));
+        }
+    };
+
+    // הפעלת הלולאה רק במצבי לובי או המתנה
     if (gameState === "lobby" || gameState === "waiting_for_spin") {
-      const randomIndex = Math.floor(Math.random() * FUNNY_TITLES.length);
-      setCurrentTitle(FUNNY_TITLES[randomIndex]);
+        runTypingLoop();
+    } else {
+        setSubtitle(""); // ניקוי כותרת במצבי משחק אחרים
     }
-  }, [gameState]); // תלות בסטטוס המשחק
+
+    return () => {
+        isCancelled = true;
+    };
+  }, [gameState]);
 
   // --- Helper Functions for Penalty UI ---
   const renderPenaltyIcon = (type: string | undefined) => {
@@ -185,21 +222,19 @@ export default function TruthOrDareGame() {
               אמת או חובה
             </h1>
 
-            {/* DYNAMIC SUBTITLE */}
-            <div className="h-16 mb-10 flex items-center justify-center w-full">
-                <AnimatePresence mode="wait">
-                    {currentTitle && (
-                        <motion.p 
-                            key={currentTitle} // Key changes -> trigger animation
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            className="text-2xl md:text-3xl text-gray-300 font-bold tracking-wide text-center px-4"
-                        >
-                            {currentTitle}
-                        </motion.p>
+            {/* DYNAMIC SUBTITLE WITH TYPING EFFECT */}
+            <div className="h-24 mb-6 flex items-center justify-center w-full max-w-4xl px-4">
+                <p 
+                    className={`text-2xl md:text-4xl font-bold tracking-wide text-center transition-colors duration-300 ${
+                        isTypingPlaceholder ? "text-gray-500 animate-pulse italic" : "text-gray-200"
+                    }`}
+                >
+                    {subtitle}
+                    {/* סמן מהבהב כשאנחנו לא במצב פלייסהולדר (כלומר כותבים את הטקסט האמיתי) */}
+                    {!isTypingPlaceholder && subtitle && (
+                        <span className="inline-block w-1 h-8 bg-pink-500 ml-1 animate-blink align-middle"></span>
                     )}
-                </AnimatePresence>
+                </p>
             </div>
 
             <div className="flex flex-wrap justify-center gap-8 px-4">
