@@ -4,16 +4,16 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Flame, Trash2, LogOut, User as UserIcon, WifiOff, RefreshCw,
-  Cpu, Beer, ThumbsUp, ThumbsDown, LogIn, Play, MessageCircleQuestion, Zap,
-  Gavel, Wine // Wine icon for bottle
+  Trash2, LogOut, User as UserIcon, WifiOff, RefreshCw,
+  Cpu, Beer, ThumbsUp, ThumbsDown, LogIn, MessageCircleQuestion, Zap,
+  Gavel, Wine
 } from "lucide-react";
 import QRCode from "react-qr-code";
 import Link from "next/link";
 
 import { useHostGameLogic } from "@/app/hooks/useHostGameLogic";
 import { useGameSounds } from "@/app/hooks/useGameSounds";
-import { FUNNY_TITLES } from "@/app/lib/funnyTitles"; // Import the list
+import { FUNNY_TITLES } from "@/app/lib/funnyTitles";
 
 export default function TruthOrDareGame() {
   const { playSpin, playShot, playWin } = useGameSounds();
@@ -48,39 +48,34 @@ export default function TruthOrDareGame() {
     let isCancelled = false;
 
     const typeText = async (text: string) => {
-        // איפוס לפני הקלדה
         setSubtitle(""); 
         for (let i = 0; i <= text.length; i++) {
             if (isCancelled) break;
             setSubtitle(text.slice(0, i));
-            await new Promise(resolve => setTimeout(resolve, 50)); // מהירות הקלדה
+            await new Promise(resolve => setTimeout(resolve, 50));
         }
     };
 
     const runTypingLoop = async () => {
         while (!isCancelled) {
-            // שלב 1: אפקט "מקליד..."
             setIsTypingPlaceholder(true);
             setSubtitle("מקליד הודעה...");
-            await new Promise(resolve => setTimeout(resolve, 1500)); // השהייה של "חשיבה"
+            await new Promise(resolve => setTimeout(resolve, 1500));
             if (isCancelled) break;
 
-            // שלב 2: בחירת משפט והקלדתו
             setIsTypingPlaceholder(false);
             const randomQuote = FUNNY_TITLES[Math.floor(Math.random() * FUNNY_TITLES.length)];
             await typeText(randomQuote);
             if (isCancelled) break;
 
-            // שלב 3: המתנה של 10 שניות עם המשפט המלא
             await new Promise(resolve => setTimeout(resolve, 10000));
         }
     };
 
-    // הפעלת הלולאה רק במצבי לובי או המתנה
     if (gameState === "lobby" || gameState === "waiting_for_spin") {
         runTypingLoop();
     } else {
-        setSubtitle(""); // ניקוי כותרת במצבי משחק אחרים
+        setSubtitle("");
     }
 
     return () => {
@@ -91,36 +86,21 @@ export default function TruthOrDareGame() {
   // --- Helper Functions for Penalty UI ---
   const renderPenaltyIcon = (type: string | undefined) => {
       switch (type) {
-          case 'lemon': 
-            return <div className="text-[150px]">🍋</div>;
-          case 'vinegar': 
-            return <div className="text-[150px]">🫗</div>; 
-          case 'onion': 
-            return <div className="text-[150px]">🧅</div>; 
-          case 'garlic': 
-            return <div className="text-[150px]">🧄</div>;
-          case 'water':
-            return <div className="text-[150px]">💦</div>;
-          case 'ice':
-            return <div className="text-[150px]">🧊</div>;
-          case 'shot': 
-            return <Beer size={180} className="text-yellow-400 drop-shadow-[0_0_30px_rgba(250,204,21,0.8)]" />;
-          case 'kiss_wall':
-            return <div className="text-[150px]">💋</div>;
-          case 'squats':
-            return <div className="text-[150px]">🏋️</div>;
-          case 'tea_bag':
-            return <div className="text-[150px]">🍵</div>;
-          case 'pasta':
-            return <div className="text-[150px]">🍝</div>;
-          case 'lipstick':
-            return <div className="text-[150px]">💄</div>;
-          case 'oil':
-            return <div className="text-[150px]">🥄</div>;
-          case 'chili':
-            return <div className="text-[150px]">🌶️</div>;
-          default: 
-            return <div className="text-[150px]">😈</div>;
+          case 'lemon': return <div className="text-[150px]">🍋</div>;
+          case 'vinegar': return <div className="text-[150px]">🫗</div>; 
+          case 'onion': return <div className="text-[150px]">🧅</div>; 
+          case 'garlic': return <div className="text-[150px]">🧄</div>;
+          case 'water': return <div className="text-[150px]">💦</div>;
+          case 'ice': return <div className="text-[150px]">🧊</div>;
+          case 'shot': return <Beer size={180} className="text-yellow-400 drop-shadow-[0_0_30px_rgba(250,204,21,0.8)]" />;
+          case 'kiss_wall': return <div className="text-[150px]">💋</div>;
+          case 'squats': return <div className="text-[150px]">🏋️</div>;
+          case 'tea_bag': return <div className="text-[150px]">🍵</div>;
+          case 'pasta': return <div className="text-[150px]">🍝</div>;
+          case 'lipstick': return <div className="text-[150px]">💄</div>;
+          case 'oil': return <div className="text-[150px]">🥄</div>;
+          case 'chili': return <div className="text-[150px]">🌶️</div>;
+          default: return <div className="text-[150px]">😈</div>;
       }
   };
 
@@ -145,33 +125,35 @@ export default function TruthOrDareGame() {
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-black to-black z-0 pointer-events-none" />
 
-      {/* Top Bar */}
+      {/* Top Bar - Relative positioning to push content down if needed, preventing overlaps */}
       {authUser && (
-        <div className="absolute top-6 left-6 z-40 flex items-center gap-4 bg-black/40 backdrop-blur px-4 py-2 rounded-full border border-white/10">
-          <div className="flex flex-col text-left">
-            <span className="text-xs text-gray-400 font-bold uppercase">קוד חדר</span>
-            <span className="text-xl font-mono text-pink-500 tracking-widest">
-              {authUser.email?.split("@")[0] || "..."}
-            </span>
-          </div>
-          <div className="h-8 w-px bg-white/20"></div>
-          <div className="flex items-center gap-2">
-            <UserIcon size={16} /> {players.length}
-          </div>
-          <button onClick={handleManualRefresh} className="p-2 hover:bg-white/20 rounded-full transition-colors text-blue-400" title="רענון">
-            <RefreshCw size={16} />
-          </button>
-          <button onClick={() => endGame(true)} className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400" title="איפוס משחק">
-            <Trash2 size={20} />
-          </button>
-          <button onClick={handleLogout} className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400" title="התנתק">
-            <LogOut size={16} />
-          </button>
-          {!isConnected && <WifiOff className="text-red-500 animate-pulse" />}
+        <div className="relative z-40 w-full flex justify-start p-6">
+            <div className="flex items-center gap-4 bg-black/40 backdrop-blur px-4 py-2 rounded-full border border-white/10">
+              <div className="flex flex-col text-left">
+                <span className="text-xs text-gray-400 font-bold uppercase">קוד חדר</span>
+                <span className="text-xl font-mono text-pink-500 tracking-widest">
+                  {authUser.email?.split("@")[0] || "..."}
+                </span>
+              </div>
+              <div className="h-8 w-px bg-white/20"></div>
+              <div className="flex items-center gap-2">
+                <UserIcon size={16} /> {players.length}
+              </div>
+              <button onClick={handleManualRefresh} className="p-2 hover:bg-white/20 rounded-full transition-colors text-blue-400" title="רענון">
+                <RefreshCw size={16} />
+              </button>
+              <button onClick={() => endGame(true)} className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400" title="איפוס משחק">
+                <Trash2 size={20} />
+              </button>
+              <button onClick={handleLogout} className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400" title="התנתק">
+                <LogOut size={16} />
+              </button>
+              {!isConnected && <WifiOff className="text-red-500 animate-pulse" />}
+            </div>
         </div>
       )}
 
-      {/* Global Emojis Overlay (LTR for proper X positioning) */}
+      {/* Global Emojis Overlay */}
       <div className="fixed inset-0 pointer-events-none z-[100] overflow-hidden" dir="ltr">
         <AnimatePresence>
           {reactions.map((r) => (
@@ -191,7 +173,7 @@ export default function TruthOrDareGame() {
       </div>
 
       {/* Main Game Area */}
-      <div className="flex-1 flex flex-col items-center justify-center relative z-10 p-10 h-full">
+      <div className="flex-1 flex flex-col items-center justify-center relative z-10 p-4 h-full">
         {!authUser && (
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
@@ -217,12 +199,10 @@ export default function TruthOrDareGame() {
         {authUser && (gameState === "lobby" || gameState === "waiting_for_spin") && (
           <div className="flex flex-col items-center w-full max-w-6xl h-full justify-center">
             
-            {/* FIXED MAIN TITLE */}
             <h1 className="text-8xl md:text-9xl font-black text-transparent bg-clip-text bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 drop-shadow-[0_0_30px_rgba(236,72,153,0.5)] mb-2 tracking-tighter text-center leading-tight">
               אמת או חובה
             </h1>
 
-            {/* DYNAMIC SUBTITLE WITH TYPING EFFECT */}
             <div className="h-24 mb-6 flex items-center justify-center w-full max-w-4xl px-4">
                 <p 
                     className={`text-2xl md:text-4xl font-bold tracking-wide text-center transition-colors duration-300 ${
@@ -230,7 +210,6 @@ export default function TruthOrDareGame() {
                     }`}
                 >
                     {subtitle}
-                    {/* סמן מהבהב כשאנחנו לא במצב פלייסהולדר (כלומר כותבים את הטקסט האמיתי) */}
                     {!isTypingPlaceholder && subtitle && (
                         <span className="inline-block w-1 h-8 bg-pink-500 ml-1 animate-blink align-middle"></span>
                     )}
@@ -290,7 +269,6 @@ export default function TruthOrDareGame() {
                 </button>
               )}
               
-              {/* Heat Level Selector - Fixed Size Boxes */}
               <div className="flex gap-4 items-center bg-black/30 p-2 rounded-2xl">
                   {[1, 2, 3].map((level) => (
                       <button
@@ -333,7 +311,6 @@ export default function TruthOrDareGame() {
               transition={{ duration: 3, ease: "circOut" }}
               className="relative z-10"
             >
-              {/* Spinning Bottle Icon instead of Wheel */}
               <div className="text-[250px]">🍾</div>
             </motion.div>
             
@@ -367,7 +344,6 @@ export default function TruthOrDareGame() {
           </motion.div>
         )}
 
-        {/* Waiting for choice UI */}
         {authUser && gameState === "waiting_for_choice" && selectedPlayer && (
             <div className="flex flex-col items-center justify-center space-y-12">
                 <div className="flex gap-12 items-center">
@@ -395,33 +371,38 @@ export default function TruthOrDareGame() {
             </div>
         )}
 
-        {/* Challenge / Revealing UI */}
+        {/* Challenge / Revealing UI - UPDATED FOR RESPONSIVENESS AND CLIPPING */}
         {authUser &&
           (gameState === "challenge" || gameState === "revealing") &&
           currentChallenge &&
           selectedPlayer && (
-            <div className="flex flex-col items-center justify-between h-full w-full py-10">
+            <div className="flex flex-col items-center justify-center h-full w-full py-4 md:py-10 relative">
+              
+              {/* Avatar Wrapper - Placed outside the overflow-hidden card but positioned absolutely to overlap */}
+              <motion.div 
+                initial={{ y: -50, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                className="z-30 mb-[-60px] relative" // Negative margin to overlap the card below
+              >
+                 <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-white shadow-[0_0_30px_rgba(0,0,0,0.5)] overflow-hidden bg-black relative">
+                    <img src={selectedPlayer.avatar} className="w-full h-full object-cover" alt="Active Player" />
+                 </div>
+                 <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-black/80 px-4 py-1 rounded-full text-white font-bold text-lg backdrop-blur-sm shadow-md border border-white/10 whitespace-nowrap">
+                    {selectedPlayer.name}
+                 </div>
+              </motion.div>
+
               <motion.div
                 initial={{ y: 50, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="w-full max-w-5xl px-4 relative z-20"
+                className="w-full max-w-6xl px-4 relative z-20 flex-1 flex items-center"
               >
-                {/* --- Active Player Avatar Header --- */}
-                <div className="absolute -top-16 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center">
-                   <div className="w-32 h-32 rounded-full border-4 border-white shadow-lg overflow-hidden bg-black relative z-10">
-                      <img src={selectedPlayer.avatar} className="w-full h-full object-cover" alt="Active Player" />
-                   </div>
-                   <div className="mt-2 bg-black/80 px-4 py-1 rounded-full text-white font-bold text-lg backdrop-blur-sm shadow-md border border-white/10">
-                      {selectedPlayer.name}
-                   </div>
-                </div>
-
                 {/* --- Challenge Card --- */}
-                <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-12 rounded-[3rem] text-center shadow-2xl relative overflow-hidden pt-40">
+                <div className="w-full bg-gray-900/90 backdrop-blur-xl border border-white/20 p-8 md:p-12 pb-16 pt-20 rounded-[3rem] text-center shadow-2xl relative overflow-hidden flex flex-col justify-center min-h-[50vh]">
                   <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-pink-500 to-cyan-500" />
                   
-                  {/* Heat Meter Visualization (3 Bars) - TV Version */}
-                  <div className="flex flex-col items-center gap-3 mb-8">
+                  {/* Heat Meter */}
+                  <div className="flex flex-col items-center gap-3 mb-6 mt-4">
                      <span className="text-gray-400 text-sm font-bold tracking-widest uppercase">
                         {currentChallenge.spiciness === 1 ? 'קליל' : currentChallenge.spiciness === 2 ? 'נועז' : 'לוהט 18+'}
                      </span>
@@ -429,7 +410,7 @@ export default function TruthOrDareGame() {
                         {Array.from({ length: 3 }).map((_, i) => (
                            <div
                              key={i}
-                             className={`w-12 h-4 rounded-full transition-all duration-300 ${
+                             className={`w-12 h-3 rounded-full transition-all duration-300 ${
                                i < currentChallenge.spiciness
                                  ? "bg-gradient-to-r from-orange-600 to-yellow-400 shadow-[0_0_15px_rgba(251,191,36,0.6)]"
                                  : "bg-gray-700/50"
@@ -439,9 +420,9 @@ export default function TruthOrDareGame() {
                      </div>
                   </div>
 
-                  <div className="flex justify-center mb-8">
+                  <div className="flex justify-center mb-6">
                     <span
-                      className={`text-5xl font-black px-8 py-3 rounded-full shadow-lg ${
+                      className={`text-3xl md:text-5xl font-black px-8 py-2 rounded-full shadow-lg ${
                         challengeType === "אמת"
                           ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
                           : "bg-pink-500/20 text-pink-400 border border-pink-500/30"
@@ -451,32 +432,59 @@ export default function TruthOrDareGame() {
                     </span>
                   </div>
                   
-                  <h3
-                    className="text-5xl md:text-7xl font-black leading-tight mb-12 drop-shadow-lg"
-                    style={{ direction: "rtl" }}
-                  >
-                    {currentChallenge.content}
-                  </h3>
+                  {/* Dynamic Typography: Using clamp() for responsive font size without cutoff */}
+                  <div className="flex-1 flex items-center justify-center">
+                      <h3
+                        className="font-black leading-tight drop-shadow-lg w-full break-words"
+                        style={{ 
+                            fontSize: "clamp(2rem, 5vw, 5rem)",
+                            direction: "rtl"
+                        }}
+                      >
+                        {currentChallenge.content}
+                      </h3>
+                  </div>
 
-                  <div className="flex items-center gap-4 max-w-lg mx-auto bg-black/50 p-2 rounded-full">
-                    <ThumbsUp className="text-green-500" />
-                    <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden">
-                      <div
-                        className="bg-green-500 h-full transition-all duration-300"
-                        style={{
-                          width: `${(votes.likes / Math.max(1, players.length - 1)) * 100}%`,
-                        }}
-                      />
-                    </div>
-                    <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden flex justify-end">
-                      <div
-                        className="bg-red-500 h-full transition-all duration-300"
-                        style={{
-                          width: `${(votes.dislikes / Math.max(1, players.length - 1)) * 100}%`,
-                        }}
-                      />
-                    </div>
-                    <ThumbsDown className="text-red-500" />
+                  {/* Votes Bar */}
+                  <div className="w-full mt-12">
+                      <div className="flex items-center gap-4 max-w-lg mx-auto bg-black/50 p-2 rounded-full relative">
+                        <ThumbsUp className="text-green-500 shrink-0" />
+                        
+                        {/* Vote Bars Container */}
+                        <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden flex relative">
+                            {/* Likes Bar (Left aligned because of LTR flex inside, but conceptually standard) */}
+                            <div
+                                className="bg-green-500 h-full transition-all duration-500 ease-out"
+                                style={{
+                                width: `${(votes.likes / Math.max(1, players.length - 1)) * 100}%`,
+                                }}
+                            />
+                            
+                            {/* Spacer to push dislikes to the end if we wanted split bars, 
+                                but here we might want them meeting in the middle or overlapping? 
+                                Let's stick to standard two-sided bar or just overlay. 
+                                Actually, usually it's Likes vs Dislikes. 
+                                Let's visualize it as a tug of war or simple percentages. 
+                            */}
+                        </div>
+                        
+                        {/* Dislikes Bar - Separate logic or combined? The original had separate divs. Let's restore separate for clarity */}
+                         <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden flex justify-end">
+                            <div
+                                className="bg-red-500 h-full transition-all duration-500 ease-out"
+                                style={{
+                                width: `${(votes.dislikes / Math.max(1, players.length - 1)) * 100}%`,
+                                }}
+                            />
+                        </div>
+
+                        <ThumbsDown className="text-red-500 shrink-0" />
+                      </div>
+                      
+                      <div className="flex justify-between max-w-lg mx-auto mt-1 px-4 text-xs font-bold text-gray-400">
+                          <span>{votes.likes} בעד</span>
+                          <span>{votes.dislikes} נגד</span>
+                      </div>
                   </div>
 
                   {currentChallenge.usedModel && (
@@ -498,7 +506,7 @@ export default function TruthOrDareGame() {
                     exit={{ opacity: 0 }}
                     className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md"
                 >
-                    <div className="text-center">
+                    <div className="text-center w-full px-4">
                         <Gavel size={80} className="mx-auto text-purple-500 mb-6 animate-bounce" />
                         <h2 className="text-6xl font-black text-white mb-4">בוחרים עונש...</h2>
                         
@@ -511,13 +519,13 @@ export default function TruthOrDareGame() {
                             </div>
                         )}
 
-                        <div className="h-96 flex items-center justify-center">
+                        <div className="min-h-[400px] flex items-center justify-center">
                             {previewPenalty ? (
                                 <motion.div 
                                     key={previewPenalty.text}
                                     initial={{ scale: 0.8, opacity: 0 }}
                                     animate={{ scale: 1, opacity: 1 }}
-                                    className="bg-gray-800 border border-gray-600 p-8 rounded-3xl max-w-xl text-center"
+                                    className="bg-gray-800 border border-gray-600 p-8 rounded-3xl max-w-xl w-full text-center"
                                 >
                                     <div className="mb-4 flex justify-center">{renderPenaltyIcon(previewPenalty.type)}</div>
                                     <h3 className="text-4xl font-bold mb-2">{previewPenalty.text}</h3>
@@ -561,7 +569,7 @@ export default function TruthOrDareGame() {
                 {currentPenalty?.text || `${selectedPlayer?.name} מוותר/ת!`}
               </h2>
               {currentPenalty?.description && (
-                  <p className="text-3xl text-white/80 mt-4 italic font-medium">
+                  <p className="text-3xl text-white/80 mt-4 italic font-medium text-center px-4">
                       "{currentPenalty.description}"
                   </p>
               )}
@@ -573,15 +581,17 @@ export default function TruthOrDareGame() {
           )}
         </AnimatePresence>
 
+        {/* Adaptive QR Code Container - Bottom Right, Scaled Down on Mobile/Active Game */}
         {authUser && joinUrl && (
           <div
-            className={`absolute z-30 transition-all duration-500 bg-white p-2 rounded-xl shadow-2xl ${
-              gameState === "lobby" || gameState === "waiting_for_spin"
-                ? "bottom-20 right-10 scale-125 rotate-3 hover:rotate-0"
-                : "bottom-6 right-6 scale-75 opacity-70 hover:opacity-100"
-            }`}
+            className={`absolute z-30 transition-all duration-500 bg-white p-2 rounded-xl shadow-2xl origin-bottom-right
+              ${gameState === "lobby" || gameState === "waiting_for_spin"
+                ? "bottom-10 right-10 scale-100 rotate-3 hover:rotate-0" // Lobby: Big
+                : "bottom-4 right-4 scale-75 opacity-40 hover:opacity-100 grayscale hover:grayscale-0" // Game: Small & Unobtrusive
+              }
+            `}
           >
-            <QRCode value={joinUrl} size={gameState === "lobby" ? 120 : 100} />
+            <QRCode value={joinUrl} size={gameState === "lobby" ? 120 : 80} />
             {(gameState === "lobby" || gameState === "waiting_for_spin") && (
               <p className="text-black text-[10px] font-black text-center mt-1 uppercase tracking-widest">
                 סרוק להצטרפות

@@ -127,6 +127,23 @@ export const useHostGameLogic = (
     votedPlayers
   ]);
 
+  // --- Broadcast Votes to Players (REALTIME SYNC) ---
+  useEffect(() => {
+    // Whenever votes change, broadcast the update to all players
+    if (authUser && sessionId) {
+        const channel = supabase.channel(`room_${authUser.id}`);
+        channel.send({
+            type: "broadcast",
+            event: "game_event",
+            payload: {
+                type: "votes_update",
+                payload: votes,
+                playerId: "HOST"
+            }
+        });
+    }
+  }, [votes, authUser, sessionId]);
+
   const syncGameStateToDB = async (args: {
     status: string;
     currentPlayerId: string | null;

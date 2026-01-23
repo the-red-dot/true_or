@@ -119,7 +119,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   // Safety Settings
   const [isAdult, setIsAdult] = useState(false);
   const [personalMaxHeat, setPersonalMaxHeat] = useState(2); 
-
+  
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -139,6 +139,9 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   // Local Vote Tracking
   const [hasVoted, setHasVoted] = useState(false);
   const [allPlayers, setAllPlayers] = useState<PlayerRow[]>([]); // New: Track all players for 18+ calc
+  
+  // Realtime Votes from Host
+  const [publicVotes, setPublicVotes] = useState<{ likes: number; dislikes: number }>({ likes: 0, dislikes: 0 });
 
   // Refs
   const myPlayerIdRef = useRef<string | null>(null);
@@ -167,6 +170,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       if (gameState?.status !== 'challenge') {
           setHasVoted(false);
           voteLockRef.current = false;
+          setPublicVotes({ likes: 0, dislikes: 0 });
       }
   }, [gameState?.status]);
 
@@ -254,6 +258,13 @@ export const usePlayerGameLogic = (hostId: string | null) => {
 
     const bc = supabase.channel(`room_${hostId}`, {
       config: { broadcast: { self: false } },
+    });
+
+    bc.on("broadcast", { event: "game_event" }, (event) => {
+        // Listen for vote updates from Host
+        if (event.payload.type === "votes_update") {
+            setPublicVotes(event.payload.payload);
+        }
     });
 
     bc.subscribe((status) => {
@@ -517,8 +528,9 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     personalMaxHeat, setPersonalMaxHeat,
     isSubmitted, loading, authReady, authUser, gameState, localHeat, myPlayerId,
     victimIsAdult, victimGender,
-    allPlayers, // חשיפת כלל השחקנים לצורך חישוב סטטיסטיקות
-    hasVoted, // חשיפת הסטטוס אם הצביע
+    allPlayers, 
+    hasVoted, 
+    publicVotes,
     handleJoin, handleLeaveGame, handleSpin, handleHeatChange, sendEmoji, sendVote, sendChoice,
     sendPenaltyPreview, sendPenaltySelection
   };
