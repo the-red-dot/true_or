@@ -138,6 +138,15 @@ export default function TruthOrDareGame() {
       }
   };
 
+  // Helper to calculate font size based on text length
+  const getDynamicFontSize = (text: string) => {
+      const len = text.length;
+      if (len > 150) return "clamp(0.8rem, 2.5vh, 1.5rem)";
+      if (len > 100) return "clamp(1rem, 3vh, 2rem)";
+      if (len > 60) return "clamp(1.2rem, 4vh, 2.5rem)";
+      return "clamp(1.5rem, 5vh, 4rem)";
+  };
+
   return (
     <main
       className="h-screen w-full bg-black text-white font-sans overflow-hidden relative selection:bg-pink-500 flex flex-col"
@@ -145,29 +154,34 @@ export default function TruthOrDareGame() {
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-black to-black z-0 pointer-events-none" />
 
-      {/* Top Bar */}
+      {/* Top Bar - Changed to relative to prevent overlapping */}
       {authUser && (
-        <div className="absolute top-6 left-6 z-40 flex items-center gap-4 bg-black/40 backdrop-blur px-4 py-2 rounded-full border border-white/10">
-          <div className="flex flex-col text-left">
-            <span className="text-xs text-gray-400 font-bold uppercase">קוד חדר</span>
-            <span className="text-xl font-mono text-pink-500 tracking-widest">
-              {authUser.email?.split("@")[0] || "..."}
-            </span>
+        <div className="w-full relative z-40 flex items-center justify-between p-4 bg-black/20 backdrop-blur-sm border-b border-white/5 shrink-0">
+          <div className="flex items-center gap-4 bg-black/40 px-4 py-2 rounded-full border border-white/10">
+            <div className="flex flex-col text-left">
+              <span className="text-xs text-gray-400 font-bold uppercase">קוד חדר</span>
+              <span className="text-xl font-mono text-pink-500 tracking-widest">
+                {authUser.email?.split("@")[0] || "..."}
+              </span>
+            </div>
+            <div className="h-8 w-px bg-white/20"></div>
+            <div className="flex items-center gap-2">
+              <UserIcon size={16} /> {players.length}
+            </div>
           </div>
-          <div className="h-8 w-px bg-white/20"></div>
-          <div className="flex items-center gap-2">
-            <UserIcon size={16} /> {players.length}
+          
+          <div className="flex gap-2">
+            <button onClick={handleManualRefresh} className="p-2 hover:bg-white/20 rounded-full transition-colors text-blue-400" title="רענון">
+              <RefreshCw size={16} />
+            </button>
+            <button onClick={() => endGame(true)} className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400" title="איפוס משחק">
+              <Trash2 size={20} />
+            </button>
+            <button onClick={handleLogout} className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400" title="התנתק">
+              <LogOut size={16} />
+            </button>
+            {!isConnected && <WifiOff className="text-red-500 animate-pulse" />}
           </div>
-          <button onClick={handleManualRefresh} className="p-2 hover:bg-white/20 rounded-full transition-colors text-blue-400" title="רענון">
-            <RefreshCw size={16} />
-          </button>
-          <button onClick={() => endGame(true)} className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400" title="איפוס משחק">
-            <Trash2 size={20} />
-          </button>
-          <button onClick={handleLogout} className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400" title="התנתק">
-            <LogOut size={16} />
-          </button>
-          {!isConnected && <WifiOff className="text-red-500 animate-pulse" />}
         </div>
       )}
 
@@ -191,7 +205,7 @@ export default function TruthOrDareGame() {
       </div>
 
       {/* Main Game Area */}
-      <div className="flex-1 flex flex-col items-center justify-center relative z-10 p-4 h-full">
+      <div className="flex-1 flex flex-col items-center justify-center relative z-10 p-4 w-full h-full overflow-hidden">
         {!authUser && (
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
@@ -400,15 +414,15 @@ export default function TruthOrDareGame() {
           (gameState === "challenge" || gameState === "revealing") &&
           currentChallenge &&
           selectedPlayer && (
-            <div className="flex flex-col items-center justify-center h-full w-full py-4 overflow-hidden">
+            <div className="flex flex-col items-center justify-center w-full h-full py-2 overflow-hidden">
               <motion.div
                 initial={{ y: 50, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="w-full max-w-5xl px-4 relative z-20 flex flex-col items-center justify-center"
+                className="w-full max-w-5xl px-4 relative z-20 flex flex-col items-center justify-center h-full"
               >
                 {/* --- Active Player Avatar Header (OUTSIDE CARD) --- */}
                 {/* Using negative margin-bottom to pull it into the card visual space, z-30 to sit on top */}
-                <div className="relative z-30 -mb-16 flex flex-col items-center">
+                <div className="relative z-30 -mb-16 flex flex-col items-center shrink-0">
                    <div className="w-32 h-32 rounded-full border-4 border-white shadow-[0_0_20px_rgba(255,255,255,0.3)] overflow-hidden bg-black relative z-10">
                       <img src={selectedPlayer.avatar} className="w-full h-full object-cover" alt="Active Player" />
                    </div>
@@ -419,13 +433,14 @@ export default function TruthOrDareGame() {
 
                 {/* --- Challenge Card --- */}
                 {/* Added overflow-hidden to clip the gradient bar. Added pt-20 to make room for avatar. */}
-                <div className="bg-gray-900/95 backdrop-blur-2xl border border-white/20 rounded-[3rem] text-center shadow-2xl relative flex flex-col w-full max-h-[75vh] overflow-hidden pt-20 pb-8 px-6 md:px-12">
+                {/* Added max-h calculation to ensure it fits between header and footer (QR) */}
+                <div className="bg-gray-900/95 backdrop-blur-2xl border border-white/20 rounded-[3rem] text-center shadow-2xl relative flex flex-col w-full max-h-[calc(100%-4rem)] overflow-hidden pt-20 pb-6 px-6 md:px-12">
                   
                   {/* Gradient Bar */}
                   <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-pink-500 to-cyan-500" />
                   
                   {/* Heat Meter & Type */}
-                  <div className="flex flex-col items-center gap-3 mb-4 shrink-0 mt-4">
+                  <div className="flex flex-col items-center gap-3 mb-2 shrink-0 mt-2">
                      <div className="flex items-center gap-3 bg-black/40 px-4 py-2 rounded-2xl border border-white/5">
                          <span className="text-gray-400 text-xs font-bold tracking-widest uppercase">
                             {currentChallenge.spiciness === 1 ? 'קליל' : currentChallenge.spiciness === 2 ? 'נועז' : 'לוהט 18+'}
@@ -455,18 +470,18 @@ export default function TruthOrDareGame() {
                      </span>
                   </div>
                   
-                  {/* The Challenge Text - Flex Grow + Dynamic Clamp Font Size */}
-                  <div className="flex-1 flex items-center justify-center overflow-hidden w-full min-h-0 my-2">
+                  {/* The Challenge Text - Flex Grow + Dynamic Font Size */}
+                  <div className="flex-1 flex items-center justify-center w-full min-h-0 my-2">
                       <h3
                         className="font-black leading-tight drop-shadow-lg text-center break-words w-full px-2"
                         style={{ 
                             direction: "rtl",
-                            // Dynamic font size that scales with viewport height/width
-                            fontSize: "clamp(1.8rem, 4.5vh, 4rem)", 
+                            // Dynamic font size that scales with length and viewport
+                            fontSize: getDynamicFontSize(currentChallenge.content), 
                             display: "-webkit-box",
-                            WebkitLineClamp: "6", // Limit lines to prevent scrolling
+                            // No line clamp restriction to ensure all text is shown, font size will shrink
                             WebkitBoxOrient: "vertical",
-                            overflow: "hidden"
+                            overflow: "hidden" 
                         }}
                       >
                         {currentChallenge.content}
@@ -474,7 +489,7 @@ export default function TruthOrDareGame() {
                   </div>
 
                   {/* Voting Bars */}
-                  <div className="mt-4 shrink-0 w-full">
+                  <div className="mt-2 shrink-0 w-full">
                       <div className="flex items-center gap-4 max-w-lg mx-auto bg-black/50 p-2 rounded-full border border-white/5">
                         <ThumbsUp className="text-green-500" size={32} />
                         <div className="flex-1 h-4 bg-gray-700 rounded-full overflow-hidden flex">
