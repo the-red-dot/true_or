@@ -86,21 +86,21 @@ export default function TruthOrDareGame() {
   // --- Helper Functions for Penalty UI ---
   const renderPenaltyIcon = (type: string | undefined) => {
       switch (type) {
-          case 'lemon': return <div className="text-[150px]">🍋</div>;
-          case 'vinegar': return <div className="text-[150px]">🫗</div>; 
-          case 'onion': return <div className="text-[150px]">🧅</div>; 
-          case 'garlic': return <div className="text-[150px]">🧄</div>;
-          case 'water': return <div className="text-[150px]">💦</div>;
-          case 'ice': return <div className="text-[150px]">🧊</div>;
-          case 'shot': return <Beer size={180} className="text-yellow-400 drop-shadow-[0_0_30px_rgba(250,204,21,0.8)]" />;
-          case 'kiss_wall': return <div className="text-[150px]">💋</div>;
-          case 'squats': return <div className="text-[150px]">🏋️</div>;
-          case 'tea_bag': return <div className="text-[150px]">🍵</div>;
-          case 'pasta': return <div className="text-[150px]">🍝</div>;
-          case 'lipstick': return <div className="text-[150px]">💄</div>;
-          case 'oil': return <div className="text-[150px]">🥄</div>;
-          case 'chili': return <div className="text-[150px]">🌶️</div>;
-          default: return <div className="text-[150px]">😈</div>;
+          case 'lemon': return <div className="text-8xl md:text-[150px]">🍋</div>;
+          case 'vinegar': return <div className="text-8xl md:text-[150px]">🫗</div>; 
+          case 'onion': return <div className="text-8xl md:text-[150px]">🧅</div>; 
+          case 'garlic': return <div className="text-8xl md:text-[150px]">🧄</div>;
+          case 'water': return <div className="text-8xl md:text-[150px]">💦</div>;
+          case 'ice': return <div className="text-8xl md:text-[150px]">🧊</div>;
+          case 'shot': return <div className="text-8xl md:text-[150px]"><Beer className="text-yellow-400 drop-shadow-[0_0_30px_rgba(250,204,21,0.8)] inline-block w-full h-full" /></div>;
+          case 'kiss_wall': return <div className="text-8xl md:text-[150px]">💋</div>;
+          case 'squats': return <div className="text-8xl md:text-[150px]">🏋️</div>;
+          case 'tea_bag': return <div className="text-8xl md:text-[150px]">🍵</div>;
+          case 'pasta': return <div className="text-8xl md:text-[150px]">🍝</div>;
+          case 'lipstick': return <div className="text-8xl md:text-[150px]">💄</div>;
+          case 'oil': return <div className="text-8xl md:text-[150px]">🥄</div>;
+          case 'chili': return <div className="text-8xl md:text-[150px]">🌶️</div>;
+          default: return <div className="text-8xl md:text-[150px]">😈</div>;
       }
   };
 
@@ -282,12 +282,12 @@ export default function TruthOrDareGame() {
                         `}
                       >
                           <div className="flex flex-col items-center relative z-10">
-                              <span className={`text-3xl mb-1 ${heatLevel === level ? 'animate-pulse' : 'grayscale opacity-50'}`}>
-                                  {level === 1 ? '🔥' : level === 2 ? '🔥🔥' : '🔥🔥🔥'}
-                              </span>
-                              <span className="text-sm font-black uppercase tracking-wide">
-                                  {level === 1 ? 'קליל' : level === 2 ? 'נועז' : 'לוהט'}
-                              </span>
+                            <span className={`text-3xl mb-1 ${heatLevel === level ? 'animate-pulse' : 'grayscale opacity-50'}`}>
+                              {level === 1 ? '🔥' : level === 2 ? '🔥🔥' : '🔥🔥🔥'}
+                            </span>
+                            <span className="text-sm font-black uppercase tracking-wide">
+                              {level === 1 ? 'קליל' : level === 2 ? 'נועז' : 'לוהט'}
+                            </span>
                           </div>
                       </button>
                   ))}
@@ -459,13 +459,6 @@ export default function TruthOrDareGame() {
                                 width: `${(votes.likes / Math.max(1, players.length - 1)) * 100}%`,
                                 }}
                             />
-                            
-                            {/* Spacer to push dislikes to the end if we wanted split bars, 
-                                but here we might want them meeting in the middle or overlapping? 
-                                Let's stick to standard two-sided bar or just overlay. 
-                                Actually, usually it's Likes vs Dislikes. 
-                                Let's visualize it as a tug of war or simple percentages. 
-                            */}
                         </div>
                         
                         {/* Dislikes Bar - Separate logic or combined? The original had separate divs. Let's restore separate for clarity */}
@@ -542,14 +535,14 @@ export default function TruthOrDareGame() {
             )}
         </AnimatePresence>
 
-        {/* Final Penalty Result */}
+        {/* Final Penalty Result - RESPONSIVE UPDATE */}
         <AnimatePresence>
           {gameState === "penalty" && (
             <motion.div
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.2 }}
-              className={`absolute inset-0 z-50 flex flex-col items-center justify-center backdrop-blur-md overflow-hidden ${getPenaltyColor(currentPenalty?.type)}`}
+              className={`absolute inset-0 z-50 flex flex-col items-center justify-center backdrop-blur-md overflow-hidden p-4 ${getPenaltyColor(currentPenalty?.type)}`}
             >
               <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-20" />
               
@@ -561,21 +554,21 @@ export default function TruthOrDareGame() {
                 {renderPenaltyIcon(currentPenalty?.type)}
               </motion.div>
 
-              <h1 className="text-9xl font-black uppercase mb-4 text-white drop-shadow-[0_5px_5px_rgba(0,0,0,1)] border-4 border-white p-4">
+              <h1 className="text-5xl md:text-9xl font-black uppercase mb-4 text-white drop-shadow-[0_5px_5px_rgba(0,0,0,1)] border-4 border-white p-2 md:p-4 text-center">
                 העונש נבחר!
               </h1>
               
-              <h2 className="text-6xl font-bold text-white/90 mt-4 text-center px-4 leading-tight drop-shadow-md">
+              <h2 className="text-3xl md:text-6xl font-bold text-white/90 mt-4 text-center px-4 leading-tight drop-shadow-md break-words max-w-4xl">
                 {currentPenalty?.text || `${selectedPlayer?.name} מוותר/ת!`}
               </h2>
               {currentPenalty?.description && (
-                  <p className="text-3xl text-white/80 mt-4 italic font-medium text-center px-4">
+                  <p className="text-xl md:text-3xl text-white/80 mt-4 italic font-medium text-center px-4 max-w-2xl">
                       "{currentPenalty.description}"
                   </p>
               )}
 
-              <div className="absolute bottom-20 w-full text-center">
-                <p className="text-2xl animate-pulse text-white/70">המשחק ממשיך מיד...</p>
+              <div className="absolute bottom-10 md:bottom-20 w-full text-center">
+                <p className="text-lg md:text-2xl animate-pulse text-white/70">המשחק ממשיך מיד...</p>
               </div>
             </motion.div>
           )}

@@ -5,7 +5,7 @@ import React, { Suspense, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, LogOut,
-  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft, Sparkles
+  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft, Sparkles, ThumbsUp, ThumbsDown
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { usePlayerGameLogic, PENALTIES_LIST } from "@/app/hooks/usePlayerGameLogic";
@@ -30,8 +30,9 @@ function GameController() {
     myPlayerId,
     victimIsAdult,
     victimGender, 
-    allPlayers, // רשימת כל השחקנים
-    hasVoted, // האם המשתמש כבר הצביע
+    allPlayers, 
+    hasVoted, 
+    publicVotes, // נשתמש בזה להצגת ההצבעות
     handleJoin,
     handleLeaveGame,
     handleSpin,
@@ -90,6 +91,33 @@ function GameController() {
       };
   }, [validPenalties, penaltyIndex, victimGender]);
 
+  // רכיב תצוגת הצבעות לשימוש חוזר
+  const VoteDisplay = () => {
+    const totalVotes = publicVotes.likes + publicVotes.dislikes;
+    const likesWidth = totalVotes === 0 ? 50 : (publicVotes.likes / totalVotes) * 100;
+    const dislikesWidth = totalVotes === 0 ? 50 : (publicVotes.dislikes / totalVotes) * 100;
+
+    return (
+      <div className="w-full bg-black/40 p-3 rounded-2xl border border-white/10 mt-4">
+        <div className="flex justify-between items-center text-xs font-bold text-gray-300 mb-2">
+           <span className="flex items-center gap-1 text-green-400"><ThumbsUp size={14} /> {publicVotes.likes}</span>
+           <span className="uppercase tracking-widest text-[10px] opacity-50">הצבעות</span>
+           <span className="flex items-center gap-1 text-red-400">{publicVotes.dislikes} <ThumbsDown size={14} /></span>
+        </div>
+        <div className="h-3 bg-gray-700/50 rounded-full overflow-hidden flex relative">
+           <div 
+             className="h-full bg-green-500 transition-all duration-500 ease-out" 
+             style={{ width: `${likesWidth}%` }} 
+           />
+           <div className="w-[2px] bg-black/50 z-10" />
+           <div 
+             className="h-full bg-red-500 transition-all duration-500 ease-out" 
+             style={{ width: `${dislikesWidth}%` }} 
+           />
+        </div>
+      </div>
+    );
+  };
   
   // --- Render Functions ---
 
@@ -320,13 +348,13 @@ function GameController() {
                       <div className="flex justify-center gap-1 mb-6">
                           {Array.from({ length: 3 }).map((_, i) => (
                              <div
-                                key={i}
-                                className={`w-8 h-2 rounded-full ${
-                                  i < (localHeat || 0)
-                                    ? "bg-gradient-to-r from-orange-600 to-yellow-400"
-                                    : "bg-gray-700/50"
-                                }`}
-                             />
+                                 key={i}
+                                 className={`w-8 h-2 rounded-full ${
+                                   i < (localHeat || 0)
+                                     ? "bg-gradient-to-r from-orange-600 to-yellow-400"
+                                     : "bg-gray-700/50"
+                                 }`}
+                              />
                           ))}
                       </div>
 
@@ -338,6 +366,10 @@ function GameController() {
                       </button>
                       <p className="text-center text-[10px] text-gray-500 mt-2">לחיצה תעביר את ההחלטה למחזיק בשרביט</p>
                   </div>
+
+                  {/* VOTE DISPLAY FOR ACTIVE PLAYER - NEW ADDITION */}
+                  <VoteDisplay />
+
                 </motion.div>
               )}
 
@@ -346,8 +378,8 @@ function GameController() {
                 <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-700 relative">
                   {/* כיסוי כשכבר הצבעת */}
                   {hasVoted && (
-                      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] z-10 flex items-center justify-center rounded-2xl">
-                          <span className="text-white font-bold bg-black/50 px-4 py-2 rounded-full border border-white/20">הצבעתך נקלטה! ✅</span>
+                      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center rounded-2xl">
+                          <span className="text-white font-bold bg-black/50 px-4 py-2 rounded-full border border-white/20 mb-2">הצבעתך נקלטה! ✅</span>
                       </div>
                   )}
 
@@ -356,6 +388,9 @@ function GameController() {
                     <button onClick={() => sendVote("vote_like")} className="bg-green-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-green-500 transition-colors">👍</button>
                     <button onClick={() => sendVote("vote_dislike")} className="bg-red-600/80 p-4 rounded-xl flex justify-center active:scale-95 text-2xl hover:bg-red-500 transition-colors">👎</button>
                   </div>
+
+                  {/* VOTE DISPLAY FOR SPECTATORS - NEW ADDITION */}
+                  <VoteDisplay />
                 </div>
               )}
 
@@ -368,9 +403,9 @@ function GameController() {
                   
                   {gameState.status === "waiting_for_choice" && (
                      <div className="flex flex-col items-center">
-                         <div className="text-6xl mb-4 animate-bounce">🤔</div>
-                         <p className="text-2xl font-bold text-white mb-2">ממתינים לבחירה...</p>
-                         {!isMyTurnToPlay && <p className="text-sm">{t("השחקן חושב", "השחקנית חושבת")} כרגע</p>}
+                        <div className="text-6xl mb-4 animate-bounce">🤔</div>
+                        <p className="text-2xl font-bold text-white mb-2">ממתינים לבחירה...</p>
+                        {!isMyTurnToPlay && <p className="text-sm">{t("השחקן חושב", "השחקנית חושבת")} כרגע</p>}
                      </div>
                   )}
                   
