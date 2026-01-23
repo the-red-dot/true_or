@@ -30,9 +30,9 @@ function GameController() {
     myPlayerId,
     victimIsAdult,
     victimGender, 
-    allPlayers,
-    hasVoted,
-    votes,
+    allPlayers, // רשימת כל השחקנים
+    hasVoted, // האם המשתמש כבר הצביע
+    remoteVotes, // הצבעות מהשרת
     handleJoin,
     handleLeaveGame,
     handleSpin,
@@ -317,7 +317,7 @@ function GameController() {
                           </h2>
                       </div>
 
-                      {/* Heat Meter Compact for Mobile - Requested to keep */}
+                      {/* Heat Meter Compact for Mobile */}
                       <div className="flex justify-center gap-1 mb-6">
                           {Array.from({ length: 3 }).map((_, i) => (
                              <div
@@ -327,33 +327,23 @@ function GameController() {
                                     ? "bg-gradient-to-r from-orange-600 to-yellow-400"
                                     : "bg-gray-700/50"
                                 }`}
-                              />
+                             />
                           ))}
                       </div>
 
-                      {/* Voting Progress for Active Player - NEW */}
-                      <div className="flex items-center gap-4 mb-6 bg-black/40 p-2 rounded-full">
-                          <ThumbsUp className="text-green-500" size={20} />
-                          <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden flex">
-                            <div
-                              className="bg-green-500 h-full transition-all duration-300"
-                              style={{
-                                width: `${(votes.likes / Math.max(1, allPlayers.length - 1)) * 100}%`,
-                              }}
-                            />
+                      {/* NEW: Live Votes Display for Active Player */}
+                      <div className="flex items-center justify-between bg-black/40 p-3 rounded-2xl mb-6">
+                          <div className="flex items-center gap-2 text-green-400">
+                              <ThumbsUp size={20} />
+                              <span className="font-bold">{remoteVotes.likes}</span>
                           </div>
-                          <div className="text-xs font-mono text-gray-400 min-w-[20px] text-center">
-                              {votes.likes}:{votes.dislikes}
+                          <div className="text-xs text-gray-500 font-bold uppercase tracking-widest">
+                              הצבעות הקהל
                           </div>
-                          <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden flex justify-end">
-                            <div
-                              className="bg-red-500 h-full transition-all duration-300"
-                              style={{
-                                width: `${(votes.dislikes / Math.max(1, allPlayers.length - 1)) * 100}%`,
-                              }}
-                            />
+                          <div className="flex items-center gap-2 text-red-400">
+                              <span className="font-bold">{remoteVotes.dislikes}</span>
+                              <ThumbsDown size={20} />
                           </div>
-                          <ThumbsDown className="text-red-500" size={20} />
                       </div>
 
                       <button
@@ -372,9 +362,9 @@ function GameController() {
                 <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-700 relative">
                   {/* כיסוי כשכבר הצבעת */}
                   {hasVoted && (
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] z-10 flex items-center justify-center rounded-2xl">
-                        <span className="text-white font-bold bg-black/50 px-4 py-2 rounded-full border border-white/20">הצבעתך נקלטה! ✅</span>
-                    </div>
+                      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] z-10 flex items-center justify-center rounded-2xl">
+                          <span className="text-white font-bold bg-black/50 px-4 py-2 rounded-full border border-white/20">הצבעתך נקלטה! ✅</span>
+                      </div>
                   )}
 
                   <h3 className="text-center font-bold mb-4 text-gray-300">מה דעתך על הביצוע?</h3>
@@ -394,9 +384,9 @@ function GameController() {
                   
                   {gameState.status === "waiting_for_choice" && (
                      <div className="flex flex-col items-center">
-                          <div className="text-6xl mb-4 animate-bounce">🤔</div>
-                          <p className="text-2xl font-bold text-white mb-2">ממתינים לבחירה...</p>
-                          {!isMyTurnToPlay && <p className="text-sm">{t("השחקן חושב", "השחקנית חושבת")} כרגע</p>}
+                        <div className="text-6xl mb-4 animate-bounce">🤔</div>
+                        <p className="text-2xl font-bold text-white mb-2">ממתינים לבחירה...</p>
+                        {!isMyTurnToPlay && <p className="text-sm">{t("השחקן חושב", "השחקנית חושבת")} כרגע</p>}
                      </div>
                   )}
                   

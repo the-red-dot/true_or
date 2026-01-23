@@ -119,14 +119,14 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   // Safety Settings
   const [isAdult, setIsAdult] = useState(false);
   const [personalMaxHeat, setPersonalMaxHeat] = useState(2); 
-  
+
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
-  
+
   // Auth / status
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
-  
+
   // Game Logic State
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
   const [gameState, setGameState] = useState<GameStateRow | null>(null);
@@ -135,47 +135,49 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   // Victim info
   const [victimIsAdult, setVictimIsAdult] = useState<boolean>(false);
   const [victimGender, setVictimGender] = useState<"male" | "female">("male");
-  
+
   // Local Vote Tracking
   const [hasVoted, setHasVoted] = useState(false);
-  const [votes, setVotes] = useState<{ likes: number; dislikes: number }>({ likes: 0, dislikes: 0 }); // Added Votes
   const [allPlayers, setAllPlayers] = useState<PlayerRow[]>([]); // New: Track all players for 18+ calc
   
+  // Received Votes from Host
+  const [remoteVotes, setRemoteVotes] = useState<{ likes: number; dislikes: number }>({ likes: 0, dislikes: 0 });
+
   // Refs
   const myPlayerIdRef = useRef<string | null>(null);
   const myUserIdRef = useRef<string | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const broadcastRef = useRef<RealtimeChannel | null>(null);
-  
+
   const pendingActionRef = useRef<{ type: string; payload: any } | null>(null);
-  
+
   const heatDebounceRef = useRef<number | null>(null);
   const spinLockRef = useRef(false);
   const voteLockRef = useRef(false);
-  
+
   useEffect(() => {
     myPlayerIdRef.current = myPlayerId;
   }, [myPlayerId]);
-  
+
   useEffect(() => {
     if (!isAdult && personalMaxHeat > 2) {
       setPersonalMaxHeat(2);
     }
   }, [isAdult, personalMaxHeat]);
-  
+
   // איפוס הצבעה כשסטטוס המשחק משתנה
   useEffect(() => {
       if (gameState?.status !== 'challenge') {
           setHasVoted(false);
-          setVotes({ likes: 0, dislikes: 0 }); // איפוס ספירת הצבעות
           voteLockRef.current = false;
+          setRemoteVotes({ likes: 0, dislikes: 0 }); // איפוס הצבעות מקומי
       }
   }, [gameState?.status]);
-  
+
   // --- Helpers ---
   const handleKicked = (opts?: { keepInputs?: boolean }) => {
     if (hostId) localStorage.removeItem(`player_id_${hostId}`);
-  
+
     pendingActionRef.current = null;
     spinLockRef.current = false;
     voteLockRef.current = false;
@@ -183,11 +185,11 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       window.clearTimeout(heatDebounceRef.current);
       heatDebounceRef.current = null;
     }
-  
+
     setMyPlayerId(null);
     setIsSubmitted(false);
   };
-  
+
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -208,9 +210,9 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       };
     });
   };
-  
+
   // --- Effects ---
-  
+
   // 1. Auth
   useEffect(() => {
     if (!hostId) return;
@@ -228,7 +230,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       }
     })();
   }, [hostId]);
-  
+
   // 2. Load Initial Game State
   useEffect(() => {
     if (!hostId) return;
@@ -249,26 +251,22 @@ export const usePlayerGameLogic = (hostId: string | null) => {
         setLocalHeat(gs.heat_level ?? 1);
       });
   }, [hostId]);
-  
+
   // 3. Realtime Listeners
   useEffect(() => {
     if (!hostId) return;
-  
+
     const bc = supabase.channel(`room_${hostId}`, {
       config: { broadcast: { self: false } },
     });
-  
-    bc.on("broadcast", { event: "game_event" }, (event) => {
-        const { type } = event.payload;
-        // האזנה להצבעות
-        if (type === "vote_like") {
-            setVotes(v => ({ ...v, likes: v.likes + 1 }));
+
+    bc.on("broadcast", { event: "votes_update" }, (event) => {
+        if (event.payload) {
+            setRemoteVotes(event.payload);
         }
-        if (type === "vote_dislike") {
-            setVotes(v => ({ ...v, dislikes: v.dislikes + 1 }));
-        }
-    })
-    .subscribe((status) => {
+    });
+
+    bc.subscribe((status) => {
       if (status === "SUBSCRIBED") {
         broadcastRef.current = bc;
         const pending = pendingActionRef.current;
@@ -278,7 +276,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
         }
       }
     });
-  
+
     const gameStateChannel = supabase
       .channel(`gamestate_listener_${hostId}`)
       .on(
@@ -288,7 +286,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
           const next = payload.new as GameStateRow;
           setGameState(next);
           setLocalHeat(next.heat_level ?? 1);
-  
+
           if (next.current_player_id) {
              const { data } = await supabase
                 .from('players')
@@ -301,20 +299,20 @@ export const usePlayerGameLogic = (hostId: string | null) => {
                  setVictimGender(data.gender === 'female' ? 'female' : 'male');
              }
           }
-  
+
           const nextSession = next.session_id ?? null;
           if (nextSession && nextSession !== sessionIdRef.current) {
             sessionIdRef.current = nextSession;
             if (myPlayerIdRef.current) handleKicked({ keepInputs: true });
           }
-  
+
           if (next.status !== "challenge") {
             voteLockRef.current = false;
           }
         }
       )
       .subscribe();
-  
+
     // -- Updated Players Listener to track ALL players for statistics --
     const playersChannel = supabase
       .channel(`players_listener_${hostId}`)
@@ -351,7 +349,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       supabase.from("players").select("*").eq("host_id", hostId).eq("is_active", true).then(({data}) => {
           if (data) setAllPlayers(data as PlayerRow[]);
       });
-  
+
     return () => {
       if (heatDebounceRef.current) {
         window.clearTimeout(heatDebounceRef.current);
@@ -363,14 +361,14 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       supabase.removeChannel(playersChannel);
     };
   }, [hostId]);
-  
+
   // 4. Restore Session
   useEffect(() => {
     if (!hostId || !authReady) return;
     const myUid = myUserIdRef.current;
     const sessionId = sessionIdRef.current;
     if (!myUid || !sessionId) return;
-  
+
     (async () => {
       const { data } = await supabase
         .from("players")
@@ -379,7 +377,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
         .eq("user_id", myUid)
         .eq("session_id", sessionId)
         .maybeSingle();
-  
+
       if (data && (data as any).is_active !== false) {
         const p = data as PlayerRow;
         setMyPlayerId(p.id);
@@ -392,7 +390,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       }
     })();
   }, [hostId, authReady, gameState?.session_id]);
-  
+
   // --- Actions ---
   const sendAction = async (type: string, payload: any = {}) => {
     if (!hostId || !myPlayerIdRef.current) return;
@@ -411,7 +409,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       console.error("Error sending action:", err);
     }
   };
-  
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -422,19 +420,19 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       alert("שגיאה בתמונה");
     }
   };
-  
+
   const handleJoin = async () => {
     if (!name || !gender) return alert("חסר שם או מין");
     if (!hostId) return alert("קוד משחק שגוי");
     const sessionId = sessionIdRef.current;
     if (!sessionId) return alert("החדר לא מוכן עדיין. המתן שהמארח יתחבר.");
-  
+
     setLoading(true);
     try {
       const { data: u } = await supabase.auth.getUser();
       const userId = u.user?.id;
       if (!userId) throw new Error("No user");
-  
+
       const { data, error } = await supabase
         .from("players")
         .upsert(
@@ -453,7 +451,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
         )
         .select("id")
         .single();
-  
+
       if (error) throw error;
       setMyPlayerId(data.id);
       setIsSubmitted(true);
@@ -464,25 +462,25 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       setLoading(false);
     }
   };
-  
+
   const handleLeaveGame = async () => {
     if (!confirm("לצאת מהמשחק?")) return;
     const pid = myPlayerIdRef.current;
     const myUid = myUserIdRef.current;
     if (!pid || !myUid) return;
-  
+
     await sendAction("player_left");
     await supabase.from("players").update({ is_active: false }).eq("id", pid).eq("user_id", myUid);
     handleKicked({ keepInputs: true });
   };
-  
+
   const handleSpin = () => {
     if (spinLockRef.current) return;
     spinLockRef.current = true;
     void sendAction("trigger_spin");
     window.setTimeout(() => { spinLockRef.current = false; }, 800);
   };
-  
+
   const handleHeatChange = (val: number) => {
     const allowedMax = personalMaxHeat; 
     let finalVal = val;
@@ -494,11 +492,11 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       void sendAction("update_heat", finalVal);
     }, 120);
   };
-  
+
   const sendEmoji = (icon: string) => {
     void sendAction("emoji", icon);
   };
-  
+
   const sendVote = (type: "vote_like" | "vote_dislike" | "action_skip") => {
     if (voteLockRef.current || hasVoted) return; // Prevent double vote
     
@@ -508,19 +506,19 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     void sendAction(type);
     window.setTimeout(() => { voteLockRef.current = false; }, 600);
   };
-  
+
   const sendChoice = (choice: "אמת" | "חובה") => {
     void sendAction("player_choice", choice);
   };
-  
+
   const sendPenaltyPreview = (penalty: any) => {
       void sendAction("penalty_preview", penalty);
   };
-  
+
   const sendPenaltySelection = (penalty: any) => {
       void sendAction("penalty_selected", penalty);
   };
-  
+
   return {
     name, setName,
     gender, setGender,
@@ -529,9 +527,9 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     personalMaxHeat, setPersonalMaxHeat,
     isSubmitted, loading, authReady, authUser, gameState, localHeat, myPlayerId,
     victimIsAdult, victimGender,
-    allPlayers, 
-    hasVoted, 
-    votes, // חשיפת ההצבעות לקומפוננטה
+    allPlayers, // חשיפת כלל השחקנים לצורך חישוב סטטיסטיקות
+    hasVoted, // חשיפת הסטטוס אם הצביע
+    remoteVotes, // חשיפת הצבעות שהתקבלו מהמארח
     handleJoin, handleLeaveGame, handleSpin, handleHeatChange, sendEmoji, sendVote, sendChoice,
     sendPenaltyPreview, sendPenaltySelection
   };

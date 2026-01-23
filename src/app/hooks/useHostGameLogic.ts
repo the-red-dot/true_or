@@ -545,6 +545,22 @@ export const useHostGameLogic = (
     };
   }, [authUser, sessionId]);
 
+  // NEW: Broadcast Votes to Players
+  useEffect(() => {
+      if (!authUser || gameState !== "challenge") return;
+      const channel = supabase.channel(`room_${authUser.id}`);
+      // נשתמש בערוץ הקיים (supabase ינהל את זה)
+      channel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+              channel.send({
+                  type: 'broadcast',
+                  event: 'votes_update',
+                  payload: votes
+              });
+          }
+      });
+  }, [votes, authUser, gameState]);
+
   useEffect(() => {
     if (!authUser || !sessionId) return;
 

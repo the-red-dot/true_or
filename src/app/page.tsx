@@ -395,31 +395,35 @@ export default function TruthOrDareGame() {
             </div>
         )}
 
-        {/* Challenge / Revealing UI - UPDATED FOR NO SCROLLING */}
+        {/* Challenge / Revealing UI - FIXED: Responsive, No Scroll, Avatar Safe */}
         {authUser &&
           (gameState === "challenge" || gameState === "revealing") &&
           currentChallenge &&
           selectedPlayer && (
-            <div className="flex flex-col items-center justify-center h-full w-full py-4 overflow-hidden">
+            <div className="flex flex-col items-center justify-center h-full w-full py-4 overflow-hidden pt-24 pb-8"> {/* Added generous PT/PB */}
               <motion.div
                 initial={{ y: 50, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="w-full max-w-5xl px-4 relative z-20 flex flex-col items-center justify-center h-full max-h-[85vh]"
+                className="w-full max-w-5xl px-4 relative z-20 flex flex-col items-center justify-center" // Removed hard height constraints
               >
-                {/* --- Active Player Avatar Header - Positioned Absolute to keep space --- */}
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center -translate-y-1/2">
-                   <div className="w-28 h-28 rounded-full border-4 border-white shadow-lg overflow-hidden bg-black relative z-10">
-                      <img src={selectedPlayer.avatar} className="w-full h-full object-cover" alt="Active Player" />
-                   </div>
-                   <div className="mt-1 bg-black/80 px-4 py-1 rounded-full text-white font-bold text-lg backdrop-blur-sm shadow-md border border-white/10">
-                      {selectedPlayer.name}
-                   </div>
-                </div>
+                {/* --- Challenge Card - Constrained Max Height --- */}
+                <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-8 rounded-[3rem] text-center shadow-2xl relative flex flex-col justify-between w-full max-h-[70vh]"> {/* max-h-70vh ensures avatar has room above */}
+                  
+                  {/* --- Active Player Avatar Header - ABSOLUTE to Card --- */}
+                  <div className="absolute -top-16 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center">
+                     <div className="w-28 h-28 rounded-full border-4 border-white shadow-lg overflow-hidden bg-black relative z-10">
+                        <img src={selectedPlayer.avatar} className="w-full h-full object-cover" alt="Active Player" />
+                     </div>
+                     <div className="mt-1 bg-black/80 px-4 py-1 rounded-full text-white font-bold text-lg backdrop-blur-sm shadow-md border border-white/10">
+                        {selectedPlayer.name}
+                     </div>
+                  </div>
 
-                {/* --- Challenge Card - Fixed layout to prevent scrolling --- */}
-                <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-8 rounded-[3rem] text-center shadow-2xl relative overflow-hidden flex flex-col justify-between w-full h-full pt-16 pb-6">
                   <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-pink-500 to-cyan-500" />
                   
+                  {/* Spacer for Avatar intrusion */}
+                  <div className="h-16 shrink-0"></div>
+
                   {/* Heat Meter & Type */}
                   <div className="flex flex-col items-center gap-2 mb-4 shrink-0">
                      <div className="flex items-center gap-3">
@@ -451,15 +455,17 @@ export default function TruthOrDareGame() {
                      </span>
                   </div>
                   
-                  {/* The Challenge Text - Flex Grow + Dynamic Font Size */}
-                  <div className="flex-1 flex items-center justify-center overflow-hidden px-4">
+                  {/* The Challenge Text - Flex Grow + Dynamic Clamp Font Size */}
+                  <div className="flex-1 flex items-center justify-center overflow-hidden px-4 min-h-0">
                       <h3
-                        className="font-black leading-tight drop-shadow-lg text-center"
+                        className="font-black leading-tight drop-shadow-lg text-center break-words w-full"
                         style={{ 
                             direction: "rtl",
-                            fontSize: "min(6vh, 4rem)", // Dynamic font size based on viewport height, capped at 4rem
+                            // Clamp font size: minimum 1.5rem, preferred 5vh, max 3.5rem. 
+                            // This ensures it scales down on smaller/crowded screens but doesn't get huge.
+                            fontSize: "clamp(1.5rem, 5vh, 3.5rem)", 
                             display: "-webkit-box",
-                            WebkitLineClamp: "6", // Maximum lines
+                            WebkitLineClamp: "7", // Limit lines
                             WebkitBoxOrient: "vertical",
                             overflow: "hidden"
                         }}
