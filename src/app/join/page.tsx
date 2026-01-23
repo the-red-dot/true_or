@@ -5,7 +5,8 @@ import React, { Suspense, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, LogOut,
-  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft, Sparkles
+  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft, Sparkles,
+  ThumbsUp, ThumbsDown
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { usePlayerGameLogic, PENALTIES_LIST } from "@/app/hooks/usePlayerGameLogic";
@@ -30,8 +31,9 @@ function GameController() {
     myPlayerId,
     victimIsAdult,
     victimGender, 
-    allPlayers, // רשימת כל השחקנים
-    hasVoted, // האם המשתמש כבר הצביע
+    allPlayers, 
+    hasVoted,
+    votes, // נתון ההצבעות החדש
     handleJoin,
     handleLeaveGame,
     handleSpin,
@@ -316,18 +318,26 @@ function GameController() {
                           </h2>
                       </div>
 
-                      {/* Heat Meter Compact for Mobile */}
-                      <div className="flex justify-center gap-1 mb-6">
-                          {Array.from({ length: 3 }).map((_, i) => (
-                             <div
-                                key={i}
-                                className={`w-8 h-2 rounded-full ${
-                                  i < (localHeat || 0)
-                                    ? "bg-gradient-to-r from-orange-600 to-yellow-400"
-                                    : "bg-gray-700/50"
-                                }`}
-                             />
-                          ))}
+                      {/* Live Votes for Active Player */}
+                      <div className="flex items-center gap-4 w-full max-w-lg mx-auto bg-black/50 p-2 rounded-full mb-6">
+                        <ThumbsUp className="text-green-500 flex-shrink-0" size={16} />
+                        <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
+                          <div
+                            className="bg-green-500 h-full transition-all duration-300"
+                            style={{
+                              width: `${(votes.likes / Math.max(1, allPlayers.length - 1)) * 100}%`,
+                            }}
+                          />
+                        </div>
+                        <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden flex justify-end">
+                          <div
+                            className="bg-red-500 h-full transition-all duration-300"
+                            style={{
+                              width: `${(votes.dislikes / Math.max(1, allPlayers.length - 1)) * 100}%`,
+                            }}
+                          />
+                        </div>
+                        <ThumbsDown className="text-red-500 flex-shrink-0" size={16} />
                       </div>
 
                       <button
@@ -368,9 +378,9 @@ function GameController() {
                   
                   {gameState.status === "waiting_for_choice" && (
                      <div className="flex flex-col items-center">
-                         <div className="text-6xl mb-4 animate-bounce">🤔</div>
-                         <p className="text-2xl font-bold text-white mb-2">ממתינים לבחירה...</p>
-                         {!isMyTurnToPlay && <p className="text-sm">{t("השחקן חושב", "השחקנית חושבת")} כרגע</p>}
+                        <div className="text-6xl mb-4 animate-bounce">🤔</div>
+                        <p className="text-2xl font-bold text-white mb-2">ממתינים לבחירה...</p>
+                        {!isMyTurnToPlay && <p className="text-sm">{t("השחקן חושב", "השחקנית חושבת")} כרגע</p>}
                      </div>
                   )}
                   

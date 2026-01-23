@@ -119,14 +119,14 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   // Safety Settings
   const [isAdult, setIsAdult] = useState(false);
   const [personalMaxHeat, setPersonalMaxHeat] = useState(2); 
-
+  
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
-
+  
   // Auth / status
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
-
+  
   // Game Logic State
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
   const [gameState, setGameState] = useState<GameStateRow | null>(null);
@@ -135,23 +135,24 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   // Victim info
   const [victimIsAdult, setVictimIsAdult] = useState<boolean>(false);
   const [victimGender, setVictimGender] = useState<"male" | "female">("male");
-
+  
   // Local Vote Tracking
   const [hasVoted, setHasVoted] = useState(false);
   const [allPlayers, setAllPlayers] = useState<PlayerRow[]>([]); // New: Track all players for 18+ calc
+  const [votes, setVotes] = useState<{ likes: number; dislikes: number }>({ likes: 0, dislikes: 0 }); // Added local votes state for player view
 
   // Refs
   const myPlayerIdRef = useRef<string | null>(null);
   const myUserIdRef = useRef<string | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const broadcastRef = useRef<RealtimeChannel | null>(null);
-
+  
   const pendingActionRef = useRef<{ type: string; payload: any } | null>(null);
-
+  
   const heatDebounceRef = useRef<number | null>(null);
   const spinLockRef = useRef(false);
   const voteLockRef = useRef(false);
-
+  
   useEffect(() => {
     myPlayerIdRef.current = myPlayerId;
   }, [myPlayerId]);
@@ -167,13 +168,14 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       if (gameState?.status !== 'challenge') {
           setHasVoted(false);
           voteLockRef.current = false;
+          setVotes({ likes: 0, dislikes: 0 }); // Reset votes on new round
       }
   }, [gameState?.status]);
 
   // --- Helpers ---
   const handleKicked = (opts?: { keepInputs?: boolean }) => {
     if (hostId) localStorage.removeItem(`player_id_${hostId}`);
-
+    
     pendingActionRef.current = null;
     spinLockRef.current = false;
     voteLockRef.current = false;
@@ -254,6 +256,17 @@ export const usePlayerGameLogic = (hostId: string | null) => {
 
     const bc = supabase.channel(`room_${hostId}`, {
       config: { broadcast: { self: false } },
+    });
+
+    // Listen for votes from other players to update local UI
+    bc.on("broadcast", { event: "game_event" }, (event) => {
+        const { type } = event.payload;
+        if (type === "vote_like") {
+            setVotes((prev) => ({ ...prev, likes: prev.likes + 1 }));
+        }
+        if (type === "vote_dislike") {
+            setVotes((prev) => ({ ...prev, dislikes: prev.dislikes + 1 }));
+        }
     });
 
     bc.subscribe((status) => {
@@ -436,7 +449,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
               avatar: imagePreview ?? "bg-pink-500",
               is_adult: isAdult,
               max_heat_level: personalMaxHeat
-            }],
+          }],
           { onConflict: "host_id,user_id" }
         )
         .select("id")
@@ -519,6 +532,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     victimIsAdult, victimGender,
     allPlayers, // חשיפת כלל השחקנים לצורך חישוב סטטיסטיקות
     hasVoted, // חשיפת הסטטוס אם הצביע
+    votes, // חשיפת מצב ההצבעות
     handleJoin, handleLeaveGame, handleSpin, handleHeatChange, sendEmoji, sendVote, sendChoice,
     sendPenaltyPreview, sendPenaltySelection
   };
