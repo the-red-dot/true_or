@@ -444,8 +444,114 @@ function GameController() {
         )}
       </div>
     );
-}
   }
+
+  return (
+    <div className="min-h-[100dvh] bg-black text-white p-6 flex flex-col items-center justify-center text-center" dir="rtl">
+        {/* קוד הרשמה נשאר ללא שינוי */}
+        <div className="w-full max-w-sm space-y-6">
+        <div className="flex justify-center">
+          <div className="text-[10px] px-2 py-1 bg-white/5 text-gray-300 rounded-full border border-white/10">
+            {authReady ? (isAnonymous ? "סטטוס: מחובר כאנונימי" : "סטטוס: מחובר") : "מאתחל התחברות..."}
+          </div>
+        </div>
+
+        <div className="relative mx-auto w-32 h-32">
+          <label className="cursor-pointer block w-full h-full rounded-full border-4 border-dashed border-gray-700 hover:border-pink-500 overflow-hidden transition-colors">
+            {imagePreview ? <img src={imagePreview} className="w-full h-full object-cover" /> : <Camera className="w-full h-full p-8 text-gray-600" />}
+            <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+          </label>
+        </div>
+
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="השם שלך"
+          className="w-full bg-gray-900 border border-gray-700 rounded-xl p-4 text-center text-xl focus:border-pink-500 outline-none"
+        />
+
+        <div className="flex gap-2 justify-center w-full">
+          {[{ id: "male", l: "גבר" }, { id: "female", l: "אישה" }].map((o) => (
+            <button
+              key={o.id}
+              onClick={() => setGender(o.id as any)}
+              className={`flex-1 py-3 rounded-lg border ${gender === o.id ? "bg-pink-600 border-pink-500" : "border-gray-800 bg-gray-900"}`}
+            >
+              {o.l}
+            </button>
+          ))}
+        </div>
+
+        <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700 w-full text-right">
+            <div className="flex items-center gap-2 mb-4 text-gray-300 border-b border-gray-700 pb-2">
+                <ShieldCheck size={18} className="text-green-400" />
+                <span className="font-bold text-sm">הגדרות בטיחות</span>
+            </div>
+
+            <div className="flex items-center justify-between mb-4">
+                <label className="text-sm">אני {gender === 'female' ? "מעל" : "מעל"} גיל 18</label>
+                <input 
+                    type="checkbox" 
+                    checked={isAdult} 
+                    onChange={(e) => setIsAdult(e.target.checked)}
+                    className="w-5 h-5 accent-pink-500"
+                />
+            </div>
+
+            <div className="mb-2">
+                <div className="flex justify-between text-xs text-gray-400 mb-1">
+                    <span>חום מקסימלי עבורי: {personalMaxHeat === 1 ? "קליל" : personalMaxHeat === 2 ? "נועז" : "לוהט"}</span>
+                    <span>{personalMaxHeat <= 2 ? "בטוח" : "נועז"}</span>
+                </div>
+                
+                <div className="flex gap-2 justify-between mb-2 mt-2">
+                    {[1, 2, 3].map((level) => (
+                        <button
+                            key={level}
+                            onClick={() => setPersonalMaxHeat(level)}
+                            disabled={!isAdult && level > 2}
+                            className={`
+                                flex-1 py-2 rounded-lg flex flex-col items-center transition-all duration-200
+                                ${personalMaxHeat === level 
+                                    ? 'bg-gradient-to-t from-orange-600 to-yellow-500 text-black shadow-lg border border-yellow-300' 
+                                    : 'bg-gray-700 text-gray-400 border border-gray-600'}
+                                ${!isAdult && level > 2 ? 'opacity-30 cursor-not-allowed grayscale' : ''}
+                            `}
+                        >
+                            <span className="text-lg">{level === 1 ? '🔥' : level === 2 ? '🔥🔥' : '🔥🔥🔥'}</span>
+                            <span className="text-[10px] font-bold">{level === 1 ? 'קליל' : level === 2 ? 'נועז' : 'לוהט'}</span>
+                        </button>
+                    ))}
+                </div>
+
+                <p className="text-[10px] text-gray-500 mt-2 leading-tight">
+                    {isAdult 
+                    ? "כמשתמש בוגר, באפשרותך לבחור כל רמת קושי." 
+                    : "משתמשים מתחת לגיל 18 מוגבלים לרמה 2 ומטה."}
+                    {" "}לעולם לא תקבל משימה מעל הרמה הזו.
+                </p>
+            </div>
+        </div>
+
+        <button
+          onClick={handleJoin}
+          disabled={loading}
+          className="w-full bg-pink-600 py-4 rounded-xl font-black text-xl shadow-lg disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="animate-spin mx-auto" /> : "יאללה מתחילים!"}
+        </button>
+
+        {!gameState?.session_id && (
+          <div className="text-xs text-yellow-300/80 bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3">
+            אין session_id לחדר עדיין. המארח צריך להתחבר קודם.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function PlayerJoinPage() {
   return (
     <Suspense fallback={<div className="bg-black h-screen text-white flex items-center justify-center">טוען...</div>}>
