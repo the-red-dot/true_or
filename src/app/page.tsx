@@ -142,10 +142,10 @@ export default function TruthOrDareGame() {
   // UPDATED: Much larger sizes for bigger screens
   const getDynamicFontSize = (text: string) => {
       const len = text.length;
-      if (len > 120) return "clamp(1.5rem, 3vw, 3rem)";
-      if (len > 60) return "clamp(2rem, 4.5vw, 5rem)";
-      if (len > 30) return "clamp(3rem, 6vw, 7rem)";
-      return "clamp(4rem, 9vw, 11rem)"; // Huge for short text
+      if (len > 120) return "clamp(1.5rem, 3vw, 2.5rem)";
+      if (len > 60) return "clamp(2rem, 4.5vw, 4rem)";
+      if (len > 30) return "clamp(3rem, 6vw, 5.5rem)";
+      return "clamp(4rem, 9vw, 7rem)"; // Huge for short text
   };
 
   return (
