@@ -437,7 +437,7 @@ export default function TruthOrDareGame() {
                       <h3
                         className="font-black leading-tight drop-shadow-lg w-full break-words"
                         style={{ 
-                            fontSize: "clamp(2rem, 5vw, 5rem)",
+                            fontSize: "clamp(2rem, 5vw, 3.5rem)",
                             direction: "rtl"
                         }}
                       >
