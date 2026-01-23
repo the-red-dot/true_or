@@ -138,15 +138,6 @@ export default function TruthOrDareGame() {
       }
   };
 
-  // --- Dynamic Font Size Helper ---
-  const getChallengeFontSize = (text: string) => {
-    const len = text.length;
-    if (len > 150) return "text-3xl md:text-4xl";
-    if (len > 100) return "text-4xl md:text-5xl";
-    if (len > 60) return "text-4xl md:text-6xl";
-    return "text-5xl md:text-7xl";
-  };
-
   return (
     <main
       className="h-screen w-full bg-black text-white font-sans overflow-hidden relative selection:bg-pink-500 flex flex-col"
@@ -200,7 +191,7 @@ export default function TruthOrDareGame() {
       </div>
 
       {/* Main Game Area */}
-      <div className="flex-1 flex flex-col items-center justify-center relative z-10 p-4 md:p-10 h-full w-full">
+      <div className="flex-1 flex flex-col items-center justify-center relative z-10 p-4 h-full">
         {!authUser && (
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
@@ -404,96 +395,106 @@ export default function TruthOrDareGame() {
             </div>
         )}
 
-        {/* Challenge / Revealing UI */}
+        {/* Challenge / Revealing UI - UPDATED FOR NO SCROLLING */}
         {authUser &&
           (gameState === "challenge" || gameState === "revealing") &&
           currentChallenge &&
           selectedPlayer && (
-            <div className="flex flex-col items-center justify-between h-full w-full py-2">
+            <div className="flex flex-col items-center justify-center h-full w-full py-4 overflow-hidden">
               <motion.div
                 initial={{ y: 50, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="w-full max-w-5xl px-4 relative z-20 flex flex-col h-full justify-center"
+                className="w-full max-w-5xl px-4 relative z-20 flex flex-col items-center justify-center h-full max-h-[85vh]"
               >
-                {/* --- Active Player Avatar Header --- */}
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center -mt-10 md:-mt-16">
-                   <div className="w-24 h-24 md:w-32 md:h-32 rounded-full border-4 border-white shadow-lg overflow-hidden bg-black relative z-10">
+                {/* --- Active Player Avatar Header - Positioned Absolute to keep space --- */}
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center -translate-y-1/2">
+                   <div className="w-28 h-28 rounded-full border-4 border-white shadow-lg overflow-hidden bg-black relative z-10">
                       <img src={selectedPlayer.avatar} className="w-full h-full object-cover" alt="Active Player" />
                    </div>
-                   <div className="mt-2 bg-black/80 px-4 py-1 rounded-full text-white font-bold text-lg backdrop-blur-sm shadow-md border border-white/10">
+                   <div className="mt-1 bg-black/80 px-4 py-1 rounded-full text-white font-bold text-lg backdrop-blur-sm shadow-md border border-white/10">
                       {selectedPlayer.name}
                    </div>
                 </div>
 
-                {/* --- Challenge Card --- */}
-                <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 px-8 md:px-12 py-10 md:py-12 rounded-[3rem] text-center shadow-2xl relative overflow-hidden flex flex-col items-center mt-12 w-full">
+                {/* --- Challenge Card - Fixed layout to prevent scrolling --- */}
+                <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-8 rounded-[3rem] text-center shadow-2xl relative overflow-hidden flex flex-col justify-between w-full h-full pt-16 pb-6">
                   <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-pink-500 to-cyan-500" />
                   
-                  {/* Heat Meter Visualization (3 Bars) - TV Version */}
-                  <div className="flex flex-col items-center gap-3 mb-6 mt-8">
-                     <span className="text-gray-400 text-sm font-bold tracking-widest uppercase">
-                        {currentChallenge.spiciness === 1 ? 'קליל' : currentChallenge.spiciness === 2 ? 'נועז' : 'לוהט 18+'}
-                     </span>
-                     <div className="flex gap-2">
-                        {Array.from({ length: 3 }).map((_, i) => (
-                           <div
-                             key={i}
-                             className={`w-12 h-4 rounded-full transition-all duration-300 ${
-                               i < currentChallenge.spiciness
-                                 ? "bg-gradient-to-r from-orange-600 to-yellow-400 shadow-[0_0_15px_rgba(251,191,36,0.6)]"
-                                 : "bg-gray-700/50"
-                             }`}
-                           />
-                        ))}
+                  {/* Heat Meter & Type */}
+                  <div className="flex flex-col items-center gap-2 mb-4 shrink-0">
+                     <div className="flex items-center gap-3">
+                         <div className="flex gap-1">
+                            {Array.from({ length: 3 }).map((_, i) => (
+                               <div
+                                 key={i}
+                                 className={`w-8 h-3 rounded-full transition-all duration-300 ${
+                                   i < currentChallenge.spiciness
+                                     ? "bg-gradient-to-r from-orange-600 to-yellow-400 shadow-[0_0_10px_rgba(251,191,36,0.6)]"
+                                     : "bg-gray-700/50"
+                                 }`}
+                               />
+                            ))}
+                         </div>
+                         <span className="text-gray-400 text-xs font-bold tracking-widest uppercase">
+                            {currentChallenge.spiciness === 1 ? 'קליל' : currentChallenge.spiciness === 2 ? 'נועז' : 'לוהט 18+'}
+                         </span>
                      </div>
-                  </div>
 
-                  <div className="flex justify-center mb-6">
-                    <span
-                      className={`text-3xl md:text-5xl font-black px-8 py-2 rounded-full shadow-lg ${
-                        challengeType === "אמת"
-                          ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                          : "bg-pink-500/20 text-pink-400 border border-pink-500/30"
-                      }`}
-                    >
-                      {challengeType}
-                    </span>
+                     <span
+                       className={`text-3xl font-black px-6 py-1 rounded-full shadow-lg mt-2 ${
+                         challengeType === "אמת"
+                           ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                           : "bg-pink-500/20 text-pink-400 border border-pink-500/30"
+                       }`}
+                     >
+                       {challengeType}
+                     </span>
                   </div>
                   
-                  {/* DYNAMIC FONT SIZE AND SCROLL CONTAINER */}
-                  <div className="w-full flex items-center justify-center min-h-[200px] mb-8">
+                  {/* The Challenge Text - Flex Grow + Dynamic Font Size */}
+                  <div className="flex-1 flex items-center justify-center overflow-hidden px-4">
                       <h3
-                        className={`${getChallengeFontSize(currentChallenge.content)} font-black leading-tight drop-shadow-lg transition-all duration-300 break-words max-h-[40vh] overflow-y-auto scrollbar-hide w-full`}
-                        style={{ direction: "rtl" }}
+                        className="font-black leading-tight drop-shadow-lg text-center"
+                        style={{ 
+                            direction: "rtl",
+                            fontSize: "min(6vh, 4rem)", // Dynamic font size based on viewport height, capped at 4rem
+                            display: "-webkit-box",
+                            WebkitLineClamp: "6", // Maximum lines
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden"
+                        }}
                       >
                         {currentChallenge.content}
                       </h3>
                   </div>
 
-                  <div className="flex items-center gap-4 w-full max-w-lg mx-auto bg-black/50 p-2 rounded-full">
-                    <ThumbsUp className="text-green-500 flex-shrink-0" />
-                    <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden">
-                      <div
-                        className="bg-green-500 h-full transition-all duration-300"
-                        style={{
-                          width: `${(votes.likes / Math.max(1, players.length - 1)) * 100}%`,
-                        }}
-                      />
-                    </div>
-                    <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden flex justify-end">
-                      <div
-                        className="bg-red-500 h-full transition-all duration-300"
-                        style={{
-                          width: `${(votes.dislikes / Math.max(1, players.length - 1)) * 100}%`,
-                        }}
-                      />
-                    </div>
-                    <ThumbsDown className="text-red-500 flex-shrink-0" />
+                  {/* Voting Bars */}
+                  <div className="mt-6 shrink-0 w-full">
+                      <div className="flex items-center gap-4 max-w-lg mx-auto bg-black/50 p-2 rounded-full">
+                        <ThumbsUp className="text-green-500" size={32} />
+                        <div className="flex-1 h-4 bg-gray-700 rounded-full overflow-hidden flex">
+                          <div
+                            className="bg-green-500 h-full transition-all duration-300"
+                            style={{
+                              width: `${(votes.likes / Math.max(1, players.length - 1)) * 100}%`,
+                            }}
+                          />
+                        </div>
+                        <div className="flex-1 h-4 bg-gray-700 rounded-full overflow-hidden flex justify-end">
+                          <div
+                            className="bg-red-500 h-full transition-all duration-300"
+                            style={{
+                              width: `${(votes.dislikes / Math.max(1, players.length - 1)) * 100}%`,
+                            }}
+                          />
+                        </div>
+                        <ThumbsDown className="text-red-500" size={32} />
+                      </div>
                   </div>
 
                   {currentChallenge.usedModel && (
-                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 text-[10px] text-gray-500 uppercase tracking-widest opacity-30">
-                      <Cpu size={10} /> <span>{currentChallenge.usedModel}</span>
+                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 text-[8px] text-gray-600 uppercase tracking-widest opacity-30">
+                      <Cpu size={8} /> <span>{currentChallenge.usedModel}</span>
                     </div>
                   )}
                 </div>

@@ -5,8 +5,7 @@ import React, { Suspense, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, LogOut,
-  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft, Sparkles,
-  ThumbsUp, ThumbsDown
+  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft, Sparkles, ThumbsUp, ThumbsDown
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { usePlayerGameLogic, PENALTIES_LIST } from "@/app/hooks/usePlayerGameLogic";
@@ -31,9 +30,9 @@ function GameController() {
     myPlayerId,
     victimIsAdult,
     victimGender, 
-    allPlayers, 
+    allPlayers,
     hasVoted,
-    votes, // נתון ההצבעות החדש
+    votes,
     handleJoin,
     handleLeaveGame,
     handleSpin,
@@ -318,26 +317,43 @@ function GameController() {
                           </h2>
                       </div>
 
-                      {/* Live Votes for Active Player */}
-                      <div className="flex items-center gap-4 w-full max-w-lg mx-auto bg-black/50 p-2 rounded-full mb-6">
-                        <ThumbsUp className="text-green-500 flex-shrink-0" size={16} />
-                        <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
-                          <div
-                            className="bg-green-500 h-full transition-all duration-300"
-                            style={{
-                              width: `${(votes.likes / Math.max(1, allPlayers.length - 1)) * 100}%`,
-                            }}
-                          />
-                        </div>
-                        <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden flex justify-end">
-                          <div
-                            className="bg-red-500 h-full transition-all duration-300"
-                            style={{
-                              width: `${(votes.dislikes / Math.max(1, allPlayers.length - 1)) * 100}%`,
-                            }}
-                          />
-                        </div>
-                        <ThumbsDown className="text-red-500 flex-shrink-0" size={16} />
+                      {/* Heat Meter Compact for Mobile - Requested to keep */}
+                      <div className="flex justify-center gap-1 mb-6">
+                          {Array.from({ length: 3 }).map((_, i) => (
+                             <div
+                                key={i}
+                                className={`w-8 h-2 rounded-full ${
+                                  i < (localHeat || 0)
+                                    ? "bg-gradient-to-r from-orange-600 to-yellow-400"
+                                    : "bg-gray-700/50"
+                                }`}
+                              />
+                          ))}
+                      </div>
+
+                      {/* Voting Progress for Active Player - NEW */}
+                      <div className="flex items-center gap-4 mb-6 bg-black/40 p-2 rounded-full">
+                          <ThumbsUp className="text-green-500" size={20} />
+                          <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden flex">
+                            <div
+                              className="bg-green-500 h-full transition-all duration-300"
+                              style={{
+                                width: `${(votes.likes / Math.max(1, allPlayers.length - 1)) * 100}%`,
+                              }}
+                            />
+                          </div>
+                          <div className="text-xs font-mono text-gray-400 min-w-[20px] text-center">
+                              {votes.likes}:{votes.dislikes}
+                          </div>
+                          <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden flex justify-end">
+                            <div
+                              className="bg-red-500 h-full transition-all duration-300"
+                              style={{
+                                width: `${(votes.dislikes / Math.max(1, allPlayers.length - 1)) * 100}%`,
+                              }}
+                            />
+                          </div>
+                          <ThumbsDown className="text-red-500" size={20} />
                       </div>
 
                       <button
@@ -356,9 +372,9 @@ function GameController() {
                 <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-700 relative">
                   {/* כיסוי כשכבר הצבעת */}
                   {hasVoted && (
-                      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] z-10 flex items-center justify-center rounded-2xl">
-                          <span className="text-white font-bold bg-black/50 px-4 py-2 rounded-full border border-white/20">הצבעתך נקלטה! ✅</span>
-                      </div>
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] z-10 flex items-center justify-center rounded-2xl">
+                        <span className="text-white font-bold bg-black/50 px-4 py-2 rounded-full border border-white/20">הצבעתך נקלטה! ✅</span>
+                    </div>
                   )}
 
                   <h3 className="text-center font-bold mb-4 text-gray-300">מה דעתך על הביצוע?</h3>
@@ -378,9 +394,9 @@ function GameController() {
                   
                   {gameState.status === "waiting_for_choice" && (
                      <div className="flex flex-col items-center">
-                        <div className="text-6xl mb-4 animate-bounce">🤔</div>
-                        <p className="text-2xl font-bold text-white mb-2">ממתינים לבחירה...</p>
-                        {!isMyTurnToPlay && <p className="text-sm">{t("השחקן חושב", "השחקנית חושבת")} כרגע</p>}
+                          <div className="text-6xl mb-4 animate-bounce">🤔</div>
+                          <p className="text-2xl font-bold text-white mb-2">ממתינים לבחירה...</p>
+                          {!isMyTurnToPlay && <p className="text-sm">{t("השחקן חושב", "השחקנית חושבת")} כרגע</p>}
                      </div>
                   )}
                   
