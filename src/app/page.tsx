@@ -139,12 +139,13 @@ export default function TruthOrDareGame() {
   };
 
   // Helper to calculate font size based on text length
+  // UPDATED: Much larger sizes for bigger screens
   const getDynamicFontSize = (text: string) => {
       const len = text.length;
-      if (len > 150) return "clamp(0.8rem, 2.5vh, 1.5rem)";
-      if (len > 100) return "clamp(1rem, 3vh, 2rem)";
-      if (len > 60) return "clamp(1.2rem, 4vh, 2.5rem)";
-      return "clamp(1.5rem, 5vh, 4rem)";
+      if (len > 120) return "clamp(1.5rem, 3vw, 3rem)";
+      if (len > 60) return "clamp(2rem, 4.5vw, 5rem)";
+      if (len > 30) return "clamp(3rem, 6vw, 7rem)";
+      return "clamp(4rem, 9vw, 11rem)"; // Huge for short text
   };
 
   return (
@@ -611,7 +612,7 @@ export default function TruthOrDareGame() {
             className={`absolute z-30 transition-all duration-500 bg-white p-2 rounded-xl shadow-2xl ${
               gameState === "lobby" || gameState === "waiting_for_spin"
                 ? "bottom-20 right-10 scale-125 rotate-3 hover:rotate-0"
-                : "bottom-6 right-6 scale-75 opacity-70 hover:opacity-100"
+                : "bottom-4 right-4 scale-50 opacity-30 hover:scale-100 hover:opacity-100 origin-bottom-right"
             }`}
           >
             <QRCode value={joinUrl} size={gameState === "lobby" ? 120 : 100} />
