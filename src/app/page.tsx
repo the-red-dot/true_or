@@ -400,38 +400,41 @@ export default function TruthOrDareGame() {
           (gameState === "challenge" || gameState === "revealing") &&
           currentChallenge &&
           selectedPlayer && (
-            <div className="flex flex-col items-center justify-center h-full w-full py-4 overflow-hidden pt-24 pb-8"> {/* Added generous PT/PB */}
+            <div className="flex flex-col items-center justify-center h-full w-full py-4 overflow-hidden">
               <motion.div
                 initial={{ y: 50, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="w-full max-w-5xl px-4 relative z-20 flex flex-col items-center justify-center" // Removed hard height constraints
+                className="w-full max-w-5xl px-4 relative z-20 flex flex-col items-center justify-center"
               >
-                {/* --- Challenge Card - Constrained Max Height --- */}
-                <div className="bg-gray-900/90 backdrop-blur-xl border border-white/20 p-8 rounded-[3rem] text-center shadow-2xl relative flex flex-col justify-between w-full max-h-[70vh]"> {/* max-h-70vh ensures avatar has room above */}
-                  
-                  {/* --- Active Player Avatar Header - ABSOLUTE to Card --- */}
-                  <div className="absolute -top-16 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center">
-                     <div className="w-28 h-28 rounded-full border-4 border-white shadow-lg overflow-hidden bg-black relative z-10">
-                        <img src={selectedPlayer.avatar} className="w-full h-full object-cover" alt="Active Player" />
-                     </div>
-                     <div className="mt-1 bg-black/80 px-4 py-1 rounded-full text-white font-bold text-lg backdrop-blur-sm shadow-md border border-white/10">
-                        {selectedPlayer.name}
-                     </div>
-                  </div>
+                {/* --- Active Player Avatar Header (OUTSIDE CARD) --- */}
+                {/* Using negative margin-bottom to pull it into the card visual space, z-30 to sit on top */}
+                <div className="relative z-30 -mb-16 flex flex-col items-center">
+                   <div className="w-32 h-32 rounded-full border-4 border-white shadow-[0_0_20px_rgba(255,255,255,0.3)] overflow-hidden bg-black relative z-10">
+                      <img src={selectedPlayer.avatar} className="w-full h-full object-cover" alt="Active Player" />
+                   </div>
+                   <div className="mt-2 bg-black/80 px-6 py-2 rounded-full text-white font-bold text-xl backdrop-blur-md shadow-lg border border-white/10">
+                      {selectedPlayer.name}
+                   </div>
+                </div>
 
-                  <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-pink-500 to-cyan-500" />
+                {/* --- Challenge Card --- */}
+                {/* Added overflow-hidden to clip the gradient bar. Added pt-20 to make room for avatar. */}
+                <div className="bg-gray-900/95 backdrop-blur-2xl border border-white/20 rounded-[3rem] text-center shadow-2xl relative flex flex-col w-full max-h-[75vh] overflow-hidden pt-20 pb-8 px-6 md:px-12">
                   
-                  {/* Spacer for Avatar intrusion */}
-                  <div className="h-16 shrink-0"></div>
-
+                  {/* Gradient Bar */}
+                  <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-pink-500 to-cyan-500" />
+                  
                   {/* Heat Meter & Type */}
-                  <div className="flex flex-col items-center gap-2 mb-4 shrink-0">
-                     <div className="flex items-center gap-3">
+                  <div className="flex flex-col items-center gap-3 mb-4 shrink-0 mt-4">
+                     <div className="flex items-center gap-3 bg-black/40 px-4 py-2 rounded-2xl border border-white/5">
+                         <span className="text-gray-400 text-xs font-bold tracking-widest uppercase">
+                            {currentChallenge.spiciness === 1 ? 'קליל' : currentChallenge.spiciness === 2 ? 'נועז' : 'לוהט 18+'}
+                         </span>
                          <div className="flex gap-1">
                             {Array.from({ length: 3 }).map((_, i) => (
                                <div
                                  key={i}
-                                 className={`w-8 h-3 rounded-full transition-all duration-300 ${
+                                 className={`w-8 h-2 rounded-full transition-all duration-300 ${
                                    i < currentChallenge.spiciness
                                      ? "bg-gradient-to-r from-orange-600 to-yellow-400 shadow-[0_0_10px_rgba(251,191,36,0.6)]"
                                      : "bg-gray-700/50"
@@ -439,9 +442,6 @@ export default function TruthOrDareGame() {
                                />
                             ))}
                          </div>
-                         <span className="text-gray-400 text-xs font-bold tracking-widest uppercase">
-                            {currentChallenge.spiciness === 1 ? 'קליל' : currentChallenge.spiciness === 2 ? 'נועז' : 'לוהט 18+'}
-                         </span>
                      </div>
 
                      <span
@@ -456,16 +456,15 @@ export default function TruthOrDareGame() {
                   </div>
                   
                   {/* The Challenge Text - Flex Grow + Dynamic Clamp Font Size */}
-                  <div className="flex-1 flex items-center justify-center overflow-hidden px-4 min-h-0">
+                  <div className="flex-1 flex items-center justify-center overflow-hidden w-full min-h-0 my-2">
                       <h3
-                        className="font-black leading-tight drop-shadow-lg text-center break-words w-full"
+                        className="font-black leading-tight drop-shadow-lg text-center break-words w-full px-2"
                         style={{ 
                             direction: "rtl",
-                            // Clamp font size: minimum 1.5rem, preferred 5vh, max 3.5rem. 
-                            // This ensures it scales down on smaller/crowded screens but doesn't get huge.
-                            fontSize: "clamp(1.5rem, 5vh, 3.5rem)", 
+                            // Dynamic font size that scales with viewport height/width
+                            fontSize: "clamp(1.8rem, 4.5vh, 4rem)", 
                             display: "-webkit-box",
-                            WebkitLineClamp: "7", // Limit lines
+                            WebkitLineClamp: "6", // Limit lines to prevent scrolling
                             WebkitBoxOrient: "vertical",
                             overflow: "hidden"
                         }}
@@ -475,8 +474,8 @@ export default function TruthOrDareGame() {
                   </div>
 
                   {/* Voting Bars */}
-                  <div className="mt-6 shrink-0 w-full">
-                      <div className="flex items-center gap-4 max-w-lg mx-auto bg-black/50 p-2 rounded-full">
+                  <div className="mt-4 shrink-0 w-full">
+                      <div className="flex items-center gap-4 max-w-lg mx-auto bg-black/50 p-2 rounded-full border border-white/5">
                         <ThumbsUp className="text-green-500" size={32} />
                         <div className="flex-1 h-4 bg-gray-700 rounded-full overflow-hidden flex">
                           <div
