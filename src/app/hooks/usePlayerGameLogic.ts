@@ -139,9 +139,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   // Local Vote Tracking
   const [hasVoted, setHasVoted] = useState(false);
   const [allPlayers, setAllPlayers] = useState<PlayerRow[]>([]); // New: Track all players for 18+ calc
-  
-  // Received Votes from Host
-  const [remoteVotes, setRemoteVotes] = useState<{ likes: number; dislikes: number }>({ likes: 0, dislikes: 0 });
 
   // Refs
   const myPlayerIdRef = useRef<string | null>(null);
@@ -170,7 +167,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
       if (gameState?.status !== 'challenge') {
           setHasVoted(false);
           voteLockRef.current = false;
-          setRemoteVotes({ likes: 0, dislikes: 0 }); // איפוס הצבעות מקומי
       }
   }, [gameState?.status]);
 
@@ -258,12 +254,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
 
     const bc = supabase.channel(`room_${hostId}`, {
       config: { broadcast: { self: false } },
-    });
-
-    bc.on("broadcast", { event: "votes_update" }, (event) => {
-        if (event.payload) {
-            setRemoteVotes(event.payload);
-        }
     });
 
     bc.subscribe((status) => {
@@ -446,7 +436,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
               avatar: imagePreview ?? "bg-pink-500",
               is_adult: isAdult,
               max_heat_level: personalMaxHeat
-          }],
+            }],
           { onConflict: "host_id,user_id" }
         )
         .select("id")
@@ -529,7 +519,6 @@ export const usePlayerGameLogic = (hostId: string | null) => {
     victimIsAdult, victimGender,
     allPlayers, // חשיפת כלל השחקנים לצורך חישוב סטטיסטיקות
     hasVoted, // חשיפת הסטטוס אם הצביע
-    remoteVotes, // חשיפת הצבעות שהתקבלו מהמארח
     handleJoin, handleLeaveGame, handleSpin, handleHeatChange, sendEmoji, sendVote, sendChoice,
     sendPenaltyPreview, sendPenaltySelection
   };

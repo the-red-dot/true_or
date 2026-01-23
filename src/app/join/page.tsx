@@ -5,7 +5,7 @@ import React, { Suspense, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Camera, Loader2, AlertTriangle, Beer, XCircle, Flame, LogOut,
-  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft, Sparkles, ThumbsUp, ThumbsDown
+  MessageCircleQuestion, Zap, ShieldCheck, Gavel, Check, ArrowRight, ArrowLeft, Sparkles
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { usePlayerGameLogic, PENALTIES_LIST } from "@/app/hooks/usePlayerGameLogic";
@@ -32,7 +32,6 @@ function GameController() {
     victimGender, 
     allPlayers, // רשימת כל השחקנים
     hasVoted, // האם המשתמש כבר הצביע
-    remoteVotes, // הצבעות מהשרת
     handleJoin,
     handleLeaveGame,
     handleSpin,
@@ -331,21 +330,6 @@ function GameController() {
                           ))}
                       </div>
 
-                      {/* NEW: Live Votes Display for Active Player */}
-                      <div className="flex items-center justify-between bg-black/40 p-3 rounded-2xl mb-6">
-                          <div className="flex items-center gap-2 text-green-400">
-                              <ThumbsUp size={20} />
-                              <span className="font-bold">{remoteVotes.likes}</span>
-                          </div>
-                          <div className="text-xs text-gray-500 font-bold uppercase tracking-widest">
-                              הצבעות הקהל
-                          </div>
-                          <div className="flex items-center gap-2 text-red-400">
-                              <span className="font-bold">{remoteVotes.dislikes}</span>
-                              <ThumbsDown size={20} />
-                          </div>
-                      </div>
-
                       <button
                         onClick={() => sendVote("action_skip")}
                         className="w-full py-4 bg-red-500/20 hover:bg-red-500/30 text-red-200 border-2 border-red-500 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 active:scale-95 transition-all"
@@ -384,9 +368,9 @@ function GameController() {
                   
                   {gameState.status === "waiting_for_choice" && (
                      <div className="flex flex-col items-center">
-                        <div className="text-6xl mb-4 animate-bounce">🤔</div>
-                        <p className="text-2xl font-bold text-white mb-2">ממתינים לבחירה...</p>
-                        {!isMyTurnToPlay && <p className="text-sm">{t("השחקן חושב", "השחקנית חושבת")} כרגע</p>}
+                         <div className="text-6xl mb-4 animate-bounce">🤔</div>
+                         <p className="text-2xl font-bold text-white mb-2">ממתינים לבחירה...</p>
+                         {!isMyTurnToPlay && <p className="text-sm">{t("השחקן חושב", "השחקנית חושבת")} כרגע</p>}
                      </div>
                   )}
                   
