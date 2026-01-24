@@ -1,3 +1,4 @@
+// src/app/hooks/useHostGameLogic.ts
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/app/lib/supabase";
 import { User } from "@supabase/supabase-js";
@@ -52,7 +53,6 @@ export const useHostGameLogic = (
   const [currentChallenge, setCurrentChallenge] = useState<Challenge | null>(null);
   const [loadingAI, setLoadingAI] = useState(false);
   const [joinUrl, setJoinUrl] = useState("");
-  const [roomCode, setRoomCode] = useState<string>(""); 
 
   const [currentPenalty, setCurrentPenalty] = useState<Penalty | null>(null);
   const [previewPenalty, setPreviewPenalty] = useState<Penalty | null>(null);
@@ -67,6 +67,7 @@ export const useHostGameLogic = (
     dislikes: 0,
   });
   
+  // מעקב אחרי שחקנים שכבר הצביעו בסיבוב הנוכחי למניעת כפילויות
   const [votedPlayers, setVotedPlayers] = useState<Set<string>>(new Set());
 
   // --- Helpers ---
@@ -77,18 +78,9 @@ export const useHostGameLogic = (
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   };
 
-  const genRoomCode = () => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; 
-    let code = "";
-    for (let i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
-  };
-
   const resetVotes = () => {
     setVotes({ likes: 0, dislikes: 0 });
-    setVotedPlayers(new Set());
+    setVotedPlayers(new Set()); // איפוס המצביעים
   };
 
   const roundEndLockRef = useRef(false);
@@ -103,9 +95,8 @@ export const useHostGameLogic = (
     challengeType,
     currentChallenge,
     authUser,
-    votes,
-    votedPlayers,
-    roomCode 
+    votes, // הוספת votes לרף
+    votedPlayers // הוספת votedPlayers לרף
   });
 
   useEffect(() => {
@@ -120,8 +111,7 @@ export const useHostGameLogic = (
       currentChallenge,
       authUser,
       votes,
-      votedPlayers,
-      roomCode
+      votedPlayers
     };
   }, [
     players,
@@ -134,18 +124,14 @@ export const useHostGameLogic = (
     currentChallenge,
     authUser,
     votes,
-    votedPlayers,
-    roomCode
+    votedPlayers
   ]);
 
   // --- Broadcast Votes to Players (REALTIME SYNC) ---
   useEffect(() => {
+    // Whenever votes change, broadcast the update to all players
     if (authUser && sessionId) {
-        // FIX: Ensure this channel also has self: true if needed, though for OUTGOING messages it matters less.
-        // However, consistent config is key.
-        const channel = supabase.channel(`room_${authUser.id}`, {
-            config: { broadcast: { self: true } }
-        });
+        const channel = supabase.channel(`room_${authUser.id}`);
         channel.send({
             type: "broadcast",
             event: "game_event",
@@ -166,12 +152,11 @@ export const useHostGameLogic = (
     sid: string | null;
     challengeText: string | null;
     challengeT: "אמת" | "חובה" | null;
-    code: string;
   }) => {
     const au = stateRef.current.authUser;
     if (!au) return;
 
-    const { error } = await supabase.from("game_states").upsert({
+    await supabase.from("game_states").upsert({
       host_id: au.id,
       session_id: args.sid,
       status: args.status,
@@ -180,21 +165,14 @@ export const useHostGameLogic = (
       heat_level: args.heat,
       challenge_text: args.challengeText,
       challenge_type: args.challengeT,
-      room_code: args.code,
       updated_at: new Date().toISOString(),
     });
-
-    if (error) {
-        console.error("Error syncing game state:", error);
-    }
   };
 
   const ensureController = (list: Player[]) => {
     const gs = stateRef.current.gameState;
     const sid = stateRef.current.sessionId;
     const au = stateRef.current.authUser;
-    const code = stateRef.current.roomCode;
-
     if (!au || !sid) return;
     if (gs !== "lobby" && gs !== "waiting_for_spin") return;
     if (list.length === 0) return;
@@ -213,7 +191,6 @@ export const useHostGameLogic = (
       sid,
       challengeText: stateRef.current.currentChallenge?.content ?? null,
       challengeT: stateRef.current.challengeType,
-      code: code
     });
   };
 
@@ -234,7 +211,6 @@ export const useHostGameLogic = (
         setPlayers([]);
         setSessionId(null);
         setJoinUrl("");
-        setRoomCode("");
         resetVotes();
       }
     });
@@ -251,20 +227,11 @@ export const useHostGameLogic = (
       const gs = await supabase.from("game_states").select("*").eq("host_id", authUser.id).single();
 
       let currentSid: string | null = null;
-      let currentCode: string = "";
 
       if (gs.data?.session_id) {
         const data = gs.data;
         currentSid = data.session_id;
         setSessionId(currentSid);
-        
-        if (data.room_code) {
-            currentCode = data.room_code;
-        } else {
-            currentCode = genRoomCode();
-        }
-        setRoomCode(currentCode);
-
         if (typeof data.heat_level === "number") setHeatLevel(data.heat_level);
         if (data.status) setGameState(data.status as any);
         if (data.challenge_type) setChallengeType(data.challenge_type as any);
@@ -277,19 +244,13 @@ export const useHostGameLogic = (
           });
       } else {
         currentSid = genSessionId();
-        currentCode = genRoomCode();
-        setRoomCode(currentCode);
-
-        const { error } = await supabase.from("game_states").upsert({
+        await supabase.from("game_states").upsert({
           host_id: authUser.id,
           status: "lobby",
           heat_level: 1,
           session_id: currentSid,
-          room_code: currentCode,
           updated_at: new Date().toISOString(),
         });
-        
-        if (error) console.error("Initial GameState save failed:", error);
         setSessionId(currentSid);
       }
 
@@ -411,6 +372,7 @@ export const useHostGameLogic = (
       const freshPlayers = stateRef.current.players;
       if (freshPlayers.length === 0) return setGameState("lobby");
 
+      // השחקן שמחזיק בשרביט לא יכול להיבחר
       let candidates = freshPlayers;
       if (controller) {
           candidates = freshPlayers.filter(p => p.id !== controller.id);
@@ -482,8 +444,12 @@ export const useHostGameLogic = (
       return;
     }
 
+    // --- Voting Logic with Double-Vote Prevention ---
+    
+    // אם השחקן כבר הצביע בסיבוב הזה, מתעלמים
     if (votedPlayers.has(playerId)) return;
 
+    // הוספת השחקן לרשימת המצביעים
     setVotedPlayers(prev => new Set(prev).add(playerId));
 
     if (type === "vote_like") {
@@ -502,7 +468,6 @@ export const useHostGameLogic = (
 
     const hostId = authUser.id;
 
-    // *** FIX: הוספת הגדרת self: true כדי שהמארח יקבל הודעות מעצמו ***
     const gsChannel = supabase
       .channel(`gamestate_host_${hostId}`)
       .on(
@@ -535,11 +500,8 @@ export const useHostGameLogic = (
       )
       .subscribe();
 
-    // *** FIX: הוספת הגדרת self: true גם לערוץ החדר הראשי ***
     const roomChannel = supabase
-      .channel(`room_${hostId}`, {
-        config: { broadcast: { self: true } } 
-      })
+      .channel(`room_${hostId}`)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },
@@ -615,7 +577,6 @@ export const useHostGameLogic = (
         sid: sessionId,
         challengeText: currentChallenge?.content ?? null,
         challengeT: challengeType,
-        code: stateRef.current.roomCode
       });
     }, 120);
 
@@ -630,7 +591,6 @@ export const useHostGameLogic = (
     heatLevel,
     challengeType,
     currentChallenge?.content,
-    roomCode
   ]);
 
   useEffect(() => {
@@ -648,16 +608,21 @@ export const useHostGameLogic = (
     }
   }, [authUser]);
 
+  // --- לוגיקת הכרעה מעודכנת ---
   useEffect(() => {
     if (gameState !== "challenge") return;
     if (roundEndLockRef.current) return;
 
     const voters = Math.max(1, players.length - 1);
     
+    // מנצח: תיקו או יותר לייקים
+    // נכשל: רק אם יש רוב מובהק של דיסלייקים (יותר מחצי מהמצביעים הפוטנציאלים)
+    
     if (votes.dislikes > voters / 2) {
-        handleSkip();
+        handleSkip(); // נכשל
     } else if (votes.likes >= voters / 2) {
-        handleDone();
+        // בתיקו אנחנו מעבירים, אז אם יש חצי לייקים זה כבר טוב (כי המקסימום דיסלייק יהיה חצי -> תיקו -> עובר)
+        handleDone(); // עבר
     }
     
   }, [votes, players.length, gameState]);
@@ -705,7 +670,6 @@ export const useHostGameLogic = (
     await supabase.from("players").delete().eq("host_id", au.id);
 
     const newSid = genSessionId();
-    const newCode = genRoomCode();
 
     await supabase.from("game_states").upsert({
       host_id: au.id,
@@ -716,12 +680,10 @@ export const useHostGameLogic = (
       challenge_text: null,
       challenge_type: null,
       heat_level: 1,
-      room_code: newCode,
       updated_at: new Date().toISOString(),
     });
 
     setSessionId(newSid);
-    setRoomCode(newCode);
     setPlayers([]);
     setGameState("lobby");
     setLastActivePlayer(null);
@@ -748,7 +710,6 @@ export const useHostGameLogic = (
     challengeType,
     currentChallenge,
     joinUrl,
-    roomCode,
     authUser,
     isConnected,
     reactions,

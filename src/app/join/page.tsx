@@ -10,11 +10,9 @@ import {
 import { useSearchParams } from "next/navigation";
 import { usePlayerGameLogic, PENALTIES_LIST } from "@/app/hooks/usePlayerGameLogic";
 
-// Added "export" here so host page can reuse it
-export function GameController({ forcedHostId }: { forcedHostId?: string }) {
+function GameController() {
   const searchParams = useSearchParams();
-  // If forcedHostId is provided (by Host Page), use it. Otherwise try to get from URL params.
-  const hostId = forcedHostId || searchParams.get("hostId");
+  const hostId = searchParams.get("hostId");
 
   const {
     name, setName,
@@ -34,7 +32,7 @@ export function GameController({ forcedHostId }: { forcedHostId?: string }) {
     victimGender, 
     allPlayers, 
     hasVoted, 
-    publicVotes,
+    publicVotes, // נשתמש בזה להצגת ההצבעות
     handleJoin,
     handleLeaveGame,
     handleSpin,
@@ -260,7 +258,7 @@ export function GameController({ forcedHostId }: { forcedHostId?: string }) {
                           {victimGender === 'female' ? "היא ויתרה!" : "הוא ויתר!"}
                       </h2>
                       <p className="text-gray-300 text-sm">
-                        {gender === 'female' ? "בחרי" : "בחר"} {victimGender === 'female' ? "לה" : "לו"} עונש מהרשימה
+                          {gender === 'female' ? "בחרי" : "בחר"} {victimGender === 'female' ? "לה" : "לו"} עונש מהרשימה
                       </p>
                   </div>
 
@@ -356,7 +354,7 @@ export function GameController({ forcedHostId }: { forcedHostId?: string }) {
                                      ? "bg-gradient-to-r from-orange-600 to-yellow-400"
                                      : "bg-gray-700/50"
                                  }`}
-                             />
+                              />
                           ))}
                       </div>
 

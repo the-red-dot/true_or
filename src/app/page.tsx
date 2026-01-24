@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Trash2, LogOut, User as UserIcon, WifiOff, RefreshCw,
   Cpu, Beer, ThumbsUp, ThumbsDown, LogIn, MessageCircleQuestion, Zap,
-  Gavel, Wine, Smartphone, Monitor
+  Gavel, Wine
 } from "lucide-react";
 import QRCode from "react-qr-code";
 import Link from "next/link";
@@ -14,7 +14,6 @@ import Link from "next/link";
 import { useHostGameLogic } from "@/app/hooks/useHostGameLogic";
 import { useGameSounds } from "@/app/hooks/useGameSounds";
 import { FUNNY_TITLES } from "@/app/lib/funnyTitles";
-import { GameController } from "@/app/join/page"; // Import Player Interface
 
 export default function TruthOrDareGame() {
   const { playSpin, playShot, playWin } = useGameSounds();
@@ -28,7 +27,6 @@ export default function TruthOrDareGame() {
     challengeType,
     currentChallenge,
     joinUrl,
-    roomCode, // Added roomCode
     authUser,
     isConnected,
     reactions,
@@ -41,9 +39,6 @@ export default function TruthOrDareGame() {
     handleLogout,
     endGame
   } = useHostGameLogic(playSpin, playShot, playWin);
-
-  // State to toggle between TV Mode (Default) and Mobile Host Player Mode
-  const [isMobileMode, setIsMobileMode] = useState(false);
 
   // --- Title Logic ---
   const [subtitle, setSubtitle] = useState("");
@@ -132,29 +127,6 @@ export default function TruthOrDareGame() {
       }
   };
 
-  // If the host is in Mobile Mode, we render the Player Interface
-  // Note: The host logic hook still runs in the background to maintain game state!
-  if (isMobileMode && authUser) {
-      return (
-          <div className="relative h-screen w-full">
-              {/* Button to return to TV Mode - Fixed on top right */}
-              <div className="fixed top-4 right-4 z-50">
-                  <button 
-                    onClick={() => setIsMobileMode(false)}
-                    className="p-3 bg-black/50 backdrop-blur-md rounded-full border border-white/20 text-white shadow-lg hover:bg-black/70 transition-all"
-                    title="חזור למסך ראשי (TV)"
-                  >
-                      <Monitor size={20} />
-                  </button>
-              </div>
-              
-              {/* Player Interface */}
-              <GameController forcedHostId={authUser.id} />
-          </div>
-      );
-  }
-
-  // --- TV / Dashboard View ---
   return (
     <main
       className="h-screen w-full bg-black text-white font-sans overflow-hidden relative selection:bg-pink-500 flex flex-col"
@@ -162,14 +134,14 @@ export default function TruthOrDareGame() {
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-black to-black z-0 pointer-events-none" />
 
-      {/* Top Bar */}
+      {/* Top Bar - Relative positioning to push content down if needed, preventing overlaps */}
       {authUser && (
         <div className="relative z-40 w-full flex justify-start p-6">
             <div className="flex items-center gap-4 bg-black/40 backdrop-blur px-4 py-2 rounded-full border border-white/10">
               <div className="flex flex-col text-left">
                 <span className="text-xs text-gray-400 font-bold uppercase">קוד חדר</span>
-                <span className="text-xl font-mono text-pink-500 tracking-widest font-black">
-                  {roomCode || "..."}
+                <span className="text-xl font-mono text-pink-500 tracking-widest">
+                  {authUser.email?.split("@")[0] || "..."}
                 </span>
               </div>
               <div className="h-8 w-px bg-white/20"></div>
@@ -179,16 +151,6 @@ export default function TruthOrDareGame() {
               <button onClick={handleManualRefresh} className="p-2 hover:bg-white/20 rounded-full transition-colors text-blue-400" title="רענון">
                 <RefreshCw size={16} />
               </button>
-              
-              {/* Trigger for Mobile Mode */}
-              <button 
-                onClick={() => setIsMobileMode(true)} 
-                className="p-2 hover:bg-purple-500/20 rounded-full transition-colors text-purple-400" 
-                title="שחק מהנייד (כבה מסך)"
-              >
-                <Smartphone size={20} />
-              </button>
-
               <button onClick={() => endGame(true)} className="p-2 hover:bg-red-500/20 rounded-full transition-colors text-red-400" title="איפוס משחק">
                 <Trash2 size={20} />
               </button>
@@ -266,7 +228,7 @@ export default function TruthOrDareGame() {
             <div className="flex flex-wrap justify-center gap-8 px-4">
               {players.length === 0 && (
                 <div className="text-2xl text-gray-500 animate-pulse">
-                  ממתין לשחקנים... סרקו את הקוד או הזינו: <span className="font-mono text-pink-400">{roomCode}</span>
+                  ממתין לשחקנים... סרקו את הקוד
                 </div>
               )}
 
@@ -336,17 +298,17 @@ export default function TruthOrDareGame() {
                             ${isDisabled ? 'opacity-30 cursor-not-allowed grayscale border-red-900/30 bg-red-900/10' : ''}
                           `}
                         >
-                              <div className="flex flex-col items-center relative z-10">
-                                <span className={`text-3xl mb-1 ${heatLevel === level ? 'animate-pulse' : 'grayscale opacity-50'}`}>
-                                  {level === 1 ? '🔥' : level === 2 ? '🔥🔥' : '🔥🔥🔥'}
-                                </span>
-                                <span className="text-sm font-black uppercase tracking-wide">
-                                  {level === 1 ? 'קליל' : level === 2 ? 'נועז' : 'לוהט'}
-                                </span>
-                                {isDisabled && (
-                                  <span className="text-[9px] text-red-400 mt-1 font-bold">חסום למשתמש</span>
-                                )}
-                              </div>
+                            <div className="flex flex-col items-center relative z-10">
+                              <span className={`text-3xl mb-1 ${heatLevel === level ? 'animate-pulse' : 'grayscale opacity-50'}`}>
+                                {level === 1 ? '🔥' : level === 2 ? '🔥🔥' : '🔥🔥🔥'}
+                              </span>
+                              <span className="text-sm font-black uppercase tracking-wide">
+                                {level === 1 ? 'קליל' : level === 2 ? 'נועז' : 'לוהט'}
+                              </span>
+                              {isDisabled && (
+                                <span className="text-[9px] text-red-400 mt-1 font-bold">חסום למשתמש</span>
+                              )}
+                            </div>
                         </button>
                       );
                   })}
@@ -466,16 +428,16 @@ export default function TruthOrDareGame() {
                         {currentChallenge.spiciness === 1 ? 'קליל' : currentChallenge.spiciness === 2 ? 'נועז' : 'לוהט 18+'}
                      </span>
                      <div className="flex gap-2">
-                       {Array.from({ length: 3 }).map((_, i) => (
-                         <div
-                           key={i}
-                           className={`w-12 h-3 rounded-full transition-all duration-300 ${
-                             i < currentChallenge.spiciness
-                               ? "bg-gradient-to-r from-orange-600 to-yellow-400 shadow-[0_0_15px_rgba(251,191,36,0.6)]"
-                               : "bg-gray-700/50"
-                           }`}
-                         />
-                       ))}
+                        {Array.from({ length: 3 }).map((_, i) => (
+                           <div
+                             key={i}
+                             className={`w-12 h-3 rounded-full transition-all duration-300 ${
+                               i < currentChallenge.spiciness
+                                 ? "bg-gradient-to-r from-orange-600 to-yellow-400 shadow-[0_0_15px_rgba(251,191,36,0.6)]"
+                                 : "bg-gray-700/50"
+                             }`}
+                           />
+                        ))}
                      </div>
                   </div>
 
@@ -511,7 +473,7 @@ export default function TruthOrDareGame() {
                         
                         {/* Vote Bars Container */}
                         <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden flex relative">
-                            {/* Likes Bar */}
+                            {/* Likes Bar (Left aligned because of LTR flex inside, but conceptually standard) */}
                             <div
                                 className="bg-green-500 h-full transition-all duration-500 ease-out"
                                 style={{
@@ -520,7 +482,7 @@ export default function TruthOrDareGame() {
                             />
                         </div>
                         
-                        {/* Dislikes Bar */}
+                        {/* Dislikes Bar - Separate logic or combined? The original had separate divs. Let's restore separate for clarity */}
                          <div className="flex-1 h-3 bg-gray-700 rounded-full overflow-hidden flex justify-end">
                             <div
                                 className="bg-red-500 h-full transition-all duration-500 ease-out"
@@ -528,7 +490,7 @@ export default function TruthOrDareGame() {
                                   width: `${(votes.dislikes / Math.max(1, players.length - 1)) * 100}%`,
                                 }}
                             />
-                         </div>
+                        </div>
 
                         <ThumbsDown className="text-red-500 shrink-0" />
                       </div>
