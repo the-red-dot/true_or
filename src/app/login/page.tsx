@@ -62,7 +62,12 @@ export default function LoginPage() {
             .eq("room_code", roomCode.toUpperCase())
             .single();
 
-          if (error || !data) {
+          if (error) {
+              console.error(error);
+              throw new Error("לא מצאתי חדר עם הקוד הזה (ודא שהמארח מחובר).");
+          }
+
+          if (!data) {
               throw new Error("לא מצאתי חדר עם הקוד הזה.");
           }
 

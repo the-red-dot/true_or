@@ -168,7 +168,9 @@ export const useHostGameLogic = (
     const au = stateRef.current.authUser;
     if (!au) return;
 
-    await supabase.from("game_states").upsert({
+    // console.log("Syncing game state:", args); // Debugging
+
+    const { error } = await supabase.from("game_states").upsert({
       host_id: au.id,
       session_id: args.sid,
       status: args.status,
@@ -180,6 +182,10 @@ export const useHostGameLogic = (
       room_code: args.code, // Sync room code
       updated_at: new Date().toISOString(),
     });
+
+    if (error) {
+        console.error("Error syncing game state (Check if 'room_code' column exists in DB):", error);
+    }
   };
 
   const ensureController = (list: Player[]) => {
@@ -274,7 +280,8 @@ export const useHostGameLogic = (
         currentCode = genRoomCode();
         setRoomCode(currentCode);
 
-        await supabase.from("game_states").upsert({
+        // Initial save to establish session
+        const { error } = await supabase.from("game_states").upsert({
           host_id: authUser.id,
           status: "lobby",
           heat_level: 1,
@@ -282,6 +289,8 @@ export const useHostGameLogic = (
           room_code: currentCode,
           updated_at: new Date().toISOString(),
         });
+        
+        if (error) console.error("Initial GameState save failed:", error);
         setSessionId(currentSid);
       }
 
