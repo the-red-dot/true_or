@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/app/lib/supabase";
 import { RealtimeChannel, User } from "@supabase/supabase-js";
+import { Beer } from "lucide-react";
 
 // --- Types ---
 export type GameStateRow = {
@@ -13,6 +14,7 @@ export type GameStateRow = {
   challenge_text: string | null;
   challenge_type: string | null;
   session_id: string | null;
+  room_code?: string | null;
 };
 
 export type PlayerRow = {
@@ -256,8 +258,9 @@ export const usePlayerGameLogic = (hostId: string | null) => {
   useEffect(() => {
     if (!hostId) return;
 
+    // *** FIX IS HERE: set self: true to allow host to receive their own events ***
     const bc = supabase.channel(`room_${hostId}`, {
-      config: { broadcast: { self: false } },
+      config: { broadcast: { self: true } },
     });
 
     bc.on("broadcast", { event: "game_event" }, (event) => {
@@ -447,7 +450,7 @@ export const usePlayerGameLogic = (hostId: string | null) => {
               avatar: imagePreview ?? "bg-pink-500",
               is_adult: isAdult,
               max_heat_level: personalMaxHeat
-            }],
+          }],
           { onConflict: "host_id,user_id" }
         )
         .select("id")
