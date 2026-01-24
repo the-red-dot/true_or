@@ -158,6 +158,15 @@ Folder: src
                 };
               }, [gameState]);
             
+              // --- Auto-adjust heat level based on active player's limits ---
+              useEffect(() => {
+                if (lastActivePlayer && lastActivePlayer.max_heat_level) {
+                    if (heatLevel > lastActivePlayer.max_heat_level) {
+                        setHeatLevel(lastActivePlayer.max_heat_level);
+                    }
+                }
+              }, [lastActivePlayer, heatLevel, setHeatLevel]);
+            
               // --- Helper Functions for Penalty UI ---
               const renderPenaltyIcon = (type: string | undefined) => {
                   switch (type) {
@@ -345,27 +354,39 @@ Folder: src
                           )}
                           
                           <div className="flex gap-4 items-center bg-black/30 p-2 rounded-2xl">
-                              {[1, 2, 3].map((level) => (
-                                  <button
-                                    key={level}
-                                    onClick={() => setHeatLevel(level)}
-                                    className={`
-                                      relative group overflow-hidden w-24 h-24 rounded-xl transition-all duration-300 flex flex-col items-center justify-center border-2
-                                      ${heatLevel === level 
-                                        ? 'bg-gradient-to-t from-orange-600 to-yellow-500 shadow-[0_0_20px_rgba(251,191,36,0.6)] scale-110 border-yellow-300 z-10' 
-                                        : 'bg-gray-800/50 hover:bg-gray-700/50 text-gray-400 border-white/10'}
-                                    `}
-                                  >
-                                      <div className="flex flex-col items-center relative z-10">
-                                        <span className={`text-3xl mb-1 ${heatLevel === level ? 'animate-pulse' : 'grayscale opacity-50'}`}>
-                                          {level === 1 ? '🔥' : level === 2 ? '🔥🔥' : '🔥🔥🔥'}
-                                        </span>
-                                        <span className="text-sm font-black uppercase tracking-wide">
-                                          {level === 1 ? 'קליל' : level === 2 ? 'נועז' : 'לוהט'}
-                                        </span>
-                                      </div>
-                                  </button>
-                              ))}
+                              {[1, 2, 3].map((level) => {
+                                  const maxAllowedHeat = lastActivePlayer?.max_heat_level ?? 3;
+                                  const isDisabled = level > maxAllowedHeat;
+            
+                                  return (
+                                    <button
+                                      key={level}
+                                      onClick={() => {
+                                          if (!isDisabled) setHeatLevel(level);
+                                      }}
+                                      disabled={isDisabled}
+                                      className={`
+                                        relative group overflow-hidden w-24 h-24 rounded-xl transition-all duration-300 flex flex-col items-center justify-center border-2
+                                        ${heatLevel === level && !isDisabled
+                                          ? 'bg-gradient-to-t from-orange-600 to-yellow-500 shadow-[0_0_20px_rgba(251,191,36,0.6)] scale-110 border-yellow-300 z-10' 
+                                          : 'bg-gray-800/50 hover:bg-gray-700/50 text-gray-400 border-white/10'}
+                                        ${isDisabled ? 'opacity-30 cursor-not-allowed grayscale border-red-900/30 bg-red-900/10' : ''}
+                                      `}
+                                    >
+                                        <div className="flex flex-col items-center relative z-10">
+                                          <span className={`text-3xl mb-1 ${heatLevel === level ? 'animate-pulse' : 'grayscale opacity-50'}`}>
+                                            {level === 1 ? '🔥' : level === 2 ? '🔥🔥' : '🔥🔥🔥'}
+                                          </span>
+                                          <span className="text-sm font-black uppercase tracking-wide">
+                                            {level === 1 ? 'קליל' : level === 2 ? 'נועז' : 'לוהט'}
+                                          </span>
+                                          {isDisabled && (
+                                            <span className="text-[9px] text-red-400 mt-1 font-bold">חסום למשתמש</span>
+                                          )}
+                                        </div>
+                                    </button>
+                                  );
+                              })}
                           </div>
             
                           <button
@@ -531,7 +552,7 @@ Folder: src
                                         <div
                                             className="bg-green-500 h-full transition-all duration-500 ease-out"
                                             style={{
-                                            width: `${(votes.likes / Math.max(1, players.length - 1)) * 100}%`,
+                                              width: `${(votes.likes / Math.max(1, players.length - 1)) * 100}%`,
                                             }}
                                         />
                                     </div>
@@ -541,7 +562,7 @@ Folder: src
                                         <div
                                             className="bg-red-500 h-full transition-all duration-500 ease-out"
                                             style={{
-                                            width: `${(votes.dislikes / Math.max(1, players.length - 1)) * 100}%`,
+                                              width: `${(votes.dislikes / Math.max(1, players.length - 1)) * 100}%`,
                                             }}
                                         />
                                     </div>

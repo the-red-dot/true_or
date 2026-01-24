@@ -10,9 +10,11 @@ import {
 import { useSearchParams } from "next/navigation";
 import { usePlayerGameLogic, PENALTIES_LIST } from "@/app/hooks/usePlayerGameLogic";
 
-function GameController() {
+// Added "export" here so host page can reuse it
+export function GameController({ forcedHostId }: { forcedHostId?: string }) {
   const searchParams = useSearchParams();
-  const hostId = searchParams.get("hostId");
+  // If forcedHostId is provided (by Host Page), use it. Otherwise try to get from URL params.
+  const hostId = forcedHostId || searchParams.get("hostId");
 
   const {
     name, setName,
@@ -32,7 +34,7 @@ function GameController() {
     victimGender, 
     allPlayers, 
     hasVoted, 
-    publicVotes, // נשתמש בזה להצגת ההצבעות
+    publicVotes,
     handleJoin,
     handleLeaveGame,
     handleSpin,
@@ -258,7 +260,7 @@ function GameController() {
                           {victimGender === 'female' ? "היא ויתרה!" : "הוא ויתר!"}
                       </h2>
                       <p className="text-gray-300 text-sm">
-                          {gender === 'female' ? "בחרי" : "בחר"} {victimGender === 'female' ? "לה" : "לו"} עונש מהרשימה
+                        {gender === 'female' ? "בחרי" : "בחר"} {victimGender === 'female' ? "לה" : "לו"} עונש מהרשימה
                       </p>
                   </div>
 
@@ -354,7 +356,7 @@ function GameController() {
                                      ? "bg-gradient-to-r from-orange-600 to-yellow-400"
                                      : "bg-gray-700/50"
                                  }`}
-                              />
+                             />
                           ))}
                       </div>
 
