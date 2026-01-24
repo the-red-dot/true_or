@@ -52,7 +52,7 @@ export const useHostGameLogic = (
   const [currentChallenge, setCurrentChallenge] = useState<Challenge | null>(null);
   const [loadingAI, setLoadingAI] = useState(false);
   const [joinUrl, setJoinUrl] = useState("");
-  const [roomCode, setRoomCode] = useState<string>(""); // New Room Code State
+  const [roomCode, setRoomCode] = useState<string>(""); 
 
   const [currentPenalty, setCurrentPenalty] = useState<Penalty | null>(null);
   const [previewPenalty, setPreviewPenalty] = useState<Penalty | null>(null);
@@ -77,9 +77,8 @@ export const useHostGameLogic = (
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   };
 
-  // Helper for 6-char Room Code
   const genRoomCode = () => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Removed confusing chars like I, 1, O, 0
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; 
     let code = "";
     for (let i = 0; i < 6; i++) {
         code += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -142,7 +141,11 @@ export const useHostGameLogic = (
   // --- Broadcast Votes to Players (REALTIME SYNC) ---
   useEffect(() => {
     if (authUser && sessionId) {
-        const channel = supabase.channel(`room_${authUser.id}`);
+        // FIX: Ensure this channel also has self: true if needed, though for OUTGOING messages it matters less.
+        // However, consistent config is key.
+        const channel = supabase.channel(`room_${authUser.id}`, {
+            config: { broadcast: { self: true } }
+        });
         channel.send({
             type: "broadcast",
             event: "game_event",
@@ -168,8 +171,6 @@ export const useHostGameLogic = (
     const au = stateRef.current.authUser;
     if (!au) return;
 
-    // console.log("Syncing game state:", args); // Debugging
-
     const { error } = await supabase.from("game_states").upsert({
       host_id: au.id,
       session_id: args.sid,
@@ -179,12 +180,12 @@ export const useHostGameLogic = (
       heat_level: args.heat,
       challenge_text: args.challengeText,
       challenge_type: args.challengeT,
-      room_code: args.code, // Sync room code
+      room_code: args.code,
       updated_at: new Date().toISOString(),
     });
 
     if (error) {
-        console.error("Error syncing game state (Check if 'room_code' column exists in DB):", error);
+        console.error("Error syncing game state:", error);
     }
   };
 
@@ -257,7 +258,6 @@ export const useHostGameLogic = (
         currentSid = data.session_id;
         setSessionId(currentSid);
         
-        // Load or Create Room Code
         if (data.room_code) {
             currentCode = data.room_code;
         } else {
@@ -280,7 +280,6 @@ export const useHostGameLogic = (
         currentCode = genRoomCode();
         setRoomCode(currentCode);
 
-        // Initial save to establish session
         const { error } = await supabase.from("game_states").upsert({
           host_id: authUser.id,
           status: "lobby",
@@ -412,7 +411,6 @@ export const useHostGameLogic = (
       const freshPlayers = stateRef.current.players;
       if (freshPlayers.length === 0) return setGameState("lobby");
 
-      // השחקן שמחזיק בשרביט לא יכול להיבחר
       let candidates = freshPlayers;
       if (controller) {
           candidates = freshPlayers.filter(p => p.id !== controller.id);
@@ -504,6 +502,7 @@ export const useHostGameLogic = (
 
     const hostId = authUser.id;
 
+    // *** FIX: הוספת הגדרת self: true כדי שהמארח יקבל הודעות מעצמו ***
     const gsChannel = supabase
       .channel(`gamestate_host_${hostId}`)
       .on(
@@ -536,8 +535,11 @@ export const useHostGameLogic = (
       )
       .subscribe();
 
+    // *** FIX: הוספת הגדרת self: true גם לערוץ החדר הראשי ***
     const roomChannel = supabase
-      .channel(`room_${hostId}`)
+      .channel(`room_${hostId}`, {
+        config: { broadcast: { self: true } } 
+      })
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "players", filter: `host_id=eq.${hostId}` },

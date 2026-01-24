@@ -1,4 +1,3 @@
-// src/app/hooks/usePlayerGameLogic.ts
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/app/lib/supabase";
 import { RealtimeChannel, User } from "@supabase/supabase-js";
